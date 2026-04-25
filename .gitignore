@@ -8,3 +8,4 @@ data/
 projects/
 backend/app.db
 frontend/.vite/
+*.tsbuildinfo
