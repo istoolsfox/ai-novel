@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pydantic
+pytest
+python-multipart
+python-docx
+reportlab
+ebooklib

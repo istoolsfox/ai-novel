@@ -1,0 +1,282 @@
+:root {
+  color: #1d241d;
+  background: #edf2e8;
+  font-family: "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  border: 0;
+  border-radius: 8px;
+  background: #274c3a;
+  color: #f8fbf2;
+  cursor: pointer;
+  padding: 0.65rem 0.85rem;
+  text-decoration: none;
+}
+
+button:hover,
+a:hover {
+  background: #1c372a;
+}
+
+input,
+textarea {
+  border: 1px solid #c7d1bd;
+  border-radius: 8px;
+  background: #fbfcf7;
+  color: #1d241d;
+  padding: 0.75rem;
+  width: 100%;
+}
+
+textarea {
+  min-height: 180px;
+  resize: vertical;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 100vh;
+  background:
+    linear-gradient(120deg, rgba(226, 234, 214, 0.95), rgba(246, 240, 221, 0.9)),
+    repeating-linear-gradient(90deg, rgba(39, 76, 58, 0.07) 0 1px, transparent 1px 28px);
+}
+
+.sidebar {
+  background: #17251d;
+  color: #f4f6eb;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  padding: 1.2rem;
+}
+
+.brand {
+  align-items: center;
+  display: flex;
+  gap: 0.9rem;
+}
+
+.brand h1 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.brand p,
+.topbar p {
+  color: #b7c6ae;
+  margin: 0.25rem 0 0;
+}
+
+.create-project,
+.project-list,
+.chapter-list,
+.action-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.project-list button,
+.chapter-list button {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f6eb;
+  text-align: left;
+}
+
+.project-list button.selected,
+.chapter-list button.selected {
+  background: #d9b76e;
+  color: #17251d;
+}
+
+.project-list span {
+  display: block;
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1.2rem;
+}
+
+.topbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.topbar h2 {
+  font-size: 1.6rem;
+  margin: 0.1rem 0 0;
+}
+
+.eyebrow {
+  color: #668058;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.status-pill {
+  align-items: center;
+  background: #fbfcf7;
+  border: 1px solid #d8dfcf;
+  border-radius: 999px;
+  display: flex;
+  gap: 0.5rem;
+  max-width: 520px;
+  padding: 0.55rem 0.8rem;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tabs button {
+  align-items: center;
+  background: #fbfcf7;
+  border: 1px solid #d8dfcf;
+  color: #274c3a;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.tabs button.active {
+  background: #274c3a;
+  color: #f8fbf2;
+}
+
+.chapter-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 230px minmax(320px, 1fr) 300px;
+  min-height: 68vh;
+}
+
+.chapter-list,
+.editor-panel,
+.side-panel,
+.record-form,
+.record-list,
+.export-panel,
+.graph-panel {
+  background: rgba(251, 252, 247, 0.88);
+  border: 1px solid #d8dfcf;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.editor-panel textarea {
+  flex: 1;
+  min-height: 480px;
+}
+
+.title-input {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow: auto;
+}
+
+.side-panel article,
+.record-list article {
+  background: #f3f5ec;
+  border: 1px solid #d8dfcf;
+  border-radius: 8px;
+  padding: 0.85rem;
+}
+
+.side-panel p,
+.record-list p {
+  color: #4c5a45;
+  line-height: 1.6;
+}
+
+.records-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 360px 1fr;
+}
+
+.record-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.record-list {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.graph-panel {
+  height: 68vh;
+}
+
+.export-panel {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 680px;
+}
+
+.export-panel .action-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1050px) {
+  .app-shell,
+  .chapter-grid,
+  .records-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    min-height: auto;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
