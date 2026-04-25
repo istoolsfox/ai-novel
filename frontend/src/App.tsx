@@ -10,6 +10,7 @@ import {
   Library,
   Network,
   PenLine,
+  Plus,
   ShieldAlert,
   Sparkles,
   Star,
@@ -232,16 +233,25 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <Brain size={28} />
+          <div className="brand-mark">
+            <Brain size={28} />
+          </div>
           <div>
             <h1>AI 小说创作平台</h1>
-            <p>本地优先 · 长篇记忆 · 项目隔离</p>
+            <p>本地优先 / 长篇记忆 / 项目隔离</p>
           </div>
         </div>
 
         <div className="create-project">
-          <input value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} />
-          <button onClick={() => void createProject()}>新建项目</button>
+          <div className="section-title">
+            <span>项目库</span>
+            <small>{projects.length} 本小说</small>
+          </div>
+          <input value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} aria-label="项目标题" />
+          <button className="primary-action" onClick={() => void createProject()}>
+            <Plus size={16} />
+            新建项目
+          </button>
         </div>
 
         <div className="project-list">
@@ -252,9 +262,15 @@ export default function App() {
               onClick={() => setSelectedProject(project)}
             >
               <strong>{project.title}</strong>
-              <span>{project.genre || '本地项目'}</span>
+              <span>{project.genre || '本地项目'} · {project.target_chapter_count || 0} 章计划</span>
             </button>
           ))}
+          {projects.length === 0 && (
+            <div className="empty-project">
+              <strong>从侧栏创建第一本小说</strong>
+              <span>后续章节、记忆、导出都会自动归属这里选中的项目。</span>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -263,10 +279,20 @@ export default function App() {
           <div>
             <span className="eyebrow">当前项目</span>
             <h2>{selectedProject?.title ?? '还没有项目'}</h2>
+            <p className="project-context">
+              {selectedProject
+                ? `所有操作写入 ${selectedProject.title} 的项目目录`
+                : '先从左侧项目库创建或选择小说项目'}
+            </p>
           </div>
-          <div className="status-pill">
-            <CheckCircle2 size={18} />
-            <span>{log}</span>
+          <div className="topbar-stack">
+            <div className="claude-note">
+              <CheckCircle2 size={16} />
+              执行计划前读取并遵循 CLAUDE.md
+            </div>
+            <div className="status-pill">
+              <span>{log}</span>
+            </div>
           </div>
         </header>
 
@@ -285,18 +311,30 @@ export default function App() {
         {activeTab === 'chapters' && (
           <section className="chapter-grid">
             <div className="chapter-list">
-              <button onClick={() => void createChapter()}>新建章节</button>
+              <div className="panel-heading">
+                <span>章节目录</span>
+                <small>{chapters.length} 章</small>
+              </div>
+              <button className="secondary-action" onClick={() => void createChapter()}>
+                <Plus size={15} />
+                新建章节
+              </button>
               {chapters.map((chapter) => (
                 <button
                   className={chapter.id === selectedChapter?.id ? 'selected' : ''}
                   key={chapter.id}
                   onClick={() => setSelectedChapter(chapter)}
                 >
-                  第 {chapter.chapter_number} 章 · {chapter.title}
+                  <strong>第 {chapter.chapter_number} 章</strong>
+                  <span>{chapter.title}</span>
                 </button>
               ))}
             </div>
             <div className="editor-panel">
+              <div className="panel-heading">
+                <span>正文工作台</span>
+                <small>{selectedChapter ? selectedChapter.status : '未选择章节'}</small>
+              </div>
               <input
                 className="title-input"
                 value={selectedChapter?.title ?? ''}
@@ -308,11 +346,14 @@ export default function App() {
                 <button onClick={() => void saveChapter()}>保存正文</button>
                 <button onClick={() => void generateVariant()}>生成多版本</button>
                 <button onClick={() => void scoreChapter()}>独立评分</button>
-                <button onClick={() => void finalizeChapter()}>定稿并更新记忆</button>
+                <button className="primary-action" onClick={() => void finalizeChapter()}>定稿并更新记忆</button>
               </div>
             </div>
             <div className="side-panel">
-              <h3>候选版本</h3>
+              <div className="panel-heading">
+                <span>候选版本</span>
+                <small>{versions.length} 个</small>
+              </div>
               {versions.map((version) => (
                 <article key={version.id}>
                   <strong>{version.label}</strong>
@@ -320,6 +361,7 @@ export default function App() {
                   <button onClick={() => void selectVersion(version.id)}>设为当前正文</button>
                 </article>
               ))}
+              {versions.length === 0 && <p className="muted">生成多版本后，这里会展示候选正文。</p>}
             </div>
           </section>
         )}
@@ -336,6 +378,10 @@ export default function App() {
         {activeTab !== 'chapters' && activeTab !== 'graph' && activeTab !== 'export' && activeTab !== 'wiki' && (
           <section className="records-layout">
             <div className="record-form">
+              <div className="panel-heading">
+                <span>写入资料</span>
+                <small>当前项目</small>
+              </div>
               <input value={recordTitle} onChange={(event) => setRecordTitle(event.target.value)} placeholder="标题" />
               <textarea value={recordContent} onChange={(event) => setRecordContent(event.target.value)} placeholder="内容" />
               <button onClick={() => void createRecord()}>保存到当前项目</button>
@@ -355,6 +401,10 @@ export default function App() {
         {activeTab === 'wiki' && (
           <section className="records-layout">
             <div className="record-form">
+              <div className="panel-heading">
+                <span>Wiki 页面</span>
+                <small>memory/wiki</small>
+              </div>
               <input value={recordTitle} onChange={(event) => setRecordTitle(event.target.value)} placeholder="characters/heroine.md" />
               <textarea value={recordContent} onChange={(event) => setRecordContent(event.target.value)} placeholder="# Wiki 记忆页" />
               <button onClick={() => void createWikiPage()}>写入 llmwiki 记忆</button>

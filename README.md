@@ -11,6 +11,10 @@
 - AI 工作流：当前为本地 stub，可替换为真实 OpenAI-compatible 调用。
 - 导出：Markdown、TXT、DOCX、PDF、EPUB。
 
+## 开发约束
+
+执行任何实现计划前，先阅读并遵循 [CLAUDE.md](CLAUDE.md)。这里的“项目”默认指左侧项目库中选中的小说项目；所有章节、版本、评分、记忆和导出都必须归属到该项目。
+
 ## 启动后端
 
 ```powershell
