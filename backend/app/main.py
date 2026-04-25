@@ -1,4 +1,6 @@
 import json
+import urllib.error
+import urllib.request
 from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
@@ -545,7 +547,7 @@ def table_for_resource(resource: str) -> str:
 @app.post("/api/projects/{project_id}/ai/{workflow}")
 def run_ai_workflow(project_id: str, workflow: str, payload: AiWorkflowIn) -> dict[str, Any]:
     require_project(project_id)
-    output = build_stub_ai_output(workflow, payload)
+    output = run_model_or_stub(project_id, workflow, payload)
     now = utc_now()
     with connect() as conn:
         conn.execute(
@@ -611,6 +613,74 @@ def build_stub_ai_output(workflow: str, payload: AiWorkflowIn) -> dict[str, Any]
         "score": score,
         "items": [{"title": title, "content": text}],
     }
+
+
+def run_model_or_stub(project_id: str, workflow: str, payload: AiWorkflowIn) -> dict[str, Any]:
+    config = resolve_model_config(project_id, workflow)
+    if not config:
+        return build_stub_ai_output(workflow, payload)
+
+    config_payload = config.get("payload") if isinstance(config.get("payload"), dict) else {}
+    api_key = str(config_payload.get("api_key") or "")
+    base_url = str(config_payload.get("base_url") or "https://api.openai.com/v1").rstrip("/")
+    model = str(config_payload.get("model_name") or config.get("title") or "")
+    if not api_key or not model:
+        return build_stub_ai_output(workflow, payload)
+
+    request_body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "你是专业的中文长篇小说创作助手。"},
+            {"role": "user", "content": f"工作流：{workflow}\n\n输入：{payload.model_dump_json()}"},
+        ],
+        "temperature": float(config_payload.get("temperature") or 0.7),
+    }
+    request = urllib.request.Request(
+        f"{base_url}/chat/completions",
+        data=json.dumps(request_body, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        text = data["choices"][0]["message"]["content"]
+        return {"workflow": workflow, "model": model, "text": text, "score": 0, "items": [{"title": workflow, "content": text}]}
+    except (urllib.error.URLError, KeyError, json.JSONDecodeError, TimeoutError) as exc:
+        fallback = build_stub_ai_output(workflow, payload)
+        fallback["status"] = "fallback"
+        fallback["error"] = str(exc)
+        return fallback
+
+
+def resolve_model_config(project_id: str, workflow: str) -> dict[str, Any] | None:
+    with connect() as conn:
+        route = row_to_dict(
+            conn.execute(
+                """
+                SELECT * FROM model_task_routes
+                WHERE project_id = ? AND (category = ? OR title = ?)
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (project_id, workflow, workflow),
+            ).fetchone()
+        )
+        if route and route.get("content"):
+            config = row_to_dict(
+                conn.execute(
+                    "SELECT * FROM model_configs WHERE project_id = ? AND id = ?",
+                    (project_id, route["content"]),
+                ).fetchone()
+            )
+            if config:
+                return config
+        return row_to_dict(
+            conn.execute(
+                "SELECT * FROM model_configs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
+                (project_id,),
+            ).fetchone()
+        )
 
 
 def project_chapters_for_export(project_id: str) -> list[dict[str, Any]]:
