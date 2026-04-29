@@ -170,6 +170,7 @@ def init_db() -> None:
 GENERIC_TABLES = {
     "model-configs": "model_configs",
     "model-task-routes": "model_task_routes",
+    "character-profiles": "characters",
     "characters": "characters",
     "character-relationships": "character_relationships",
     "world-settings": "world_settings",
@@ -182,4 +183,3 @@ GENERIC_TABLES = {
     "knowledge-documents": "knowledge_documents",
     "prompt-templates": "prompt_templates",
 }
-
