@@ -134,6 +134,16 @@ export function RelationshipGraphWorkbench({
   onDeleteResult,
 }: RelationshipGraphWorkbenchProps) {
   const graph = useMemo(() => buildRelationshipGraph(characters, relationships), [characters, relationships]);
+  const missingEndpointCount = useMemo(
+    () =>
+      relationships.filter((relationship) => {
+        const title = relationship.title || '';
+        const source = payloadString(relationship, 'source_character');
+        const target = payloadString(relationship, 'target_character');
+        return !source || !target || title.includes('未知角色');
+      }).length,
+    [relationships],
+  );
   const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
 
@@ -157,6 +167,12 @@ export function RelationshipGraphWorkbench({
           <Plus size={16} />
           新增角色
         </button>
+        {missingEndpointCount > 0 && (
+          <div className="quality-alert">
+            <strong>资料质量提醒</strong>
+            <p>有 {missingEndpointCount} 条关系缺少来源或目标角色，建议先补全角色名再让 AI 引用关系图。</p>
+          </div>
+        )}
         <div className="relationship-flow-panel graph-panel" aria-label="角色关系图画布">
           <ReactFlow
             nodes={nodes}

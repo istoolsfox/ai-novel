@@ -46,6 +46,7 @@ function mockProjectApi() {
   vi.spyOn(api, 'listRecords').mockResolvedValue([]);
   vi.spyOn(api, 'listVersions').mockResolvedValue([]);
   vi.spyOn(api, 'deleteRecord').mockResolvedValue({ ok: true });
+  vi.spyOn(api, 'wikiCount').mockResolvedValue({ count: 0 });
 }
 
 function deferred<T>() {
@@ -105,6 +106,24 @@ test('renders dedicated style learning workflow', () => {
   expect(screen.getByLabelText('风格样本文本')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /章节编辑器/ }));
   expect(screen.getByLabelText('写作风格档案')).toBeInTheDocument();
+});
+
+test('starts the default chapter tab in focused writing mode', () => {
+  render(<App />);
+
+  expect(screen.getByText('写作工作台')).toBeInTheDocument();
+  expect(screen.getByText(/CLAUDE\.md/)).toBeInTheDocument();
+  expect(screen.queryByLabelText('当前功能说明')).not.toBeInTheDocument();
+});
+
+test('loads wiki page count for the selected project outside the wiki tab', async () => {
+  mockProjectApi();
+  vi.mocked(api.wikiCount).mockResolvedValue({ count: 111 });
+
+  render(<App />);
+
+  await waitFor(() => expect(api.wikiCount).toHaveBeenCalledWith(mockProject.id));
+  expect(await screen.findByText('llmwiki 记忆 · 111 页')).toBeInTheDocument();
 });
 
 test('ignores stale style profile loads from a previously selected project', async () => {
@@ -1147,6 +1166,42 @@ test('applies AI outline generation result to the current form key events', asyn
   expect(screen.getByLabelText('关键事件')).toHaveValue('AI 大纲建议：宗庙密谈后，她发现记忆裂痕来自旧盟友。');
 });
 
+test('formats structured outline object arrays as readable field text', async () => {
+  mockProjectApi();
+  const outlineRecord: GenericRecord = {
+    id: 'outline-1',
+    title: '第 2 章 · 灰塔证词',
+    category: 'chapter_outline',
+    content: '余波追索。',
+    status: 'active',
+    payload: {
+      chapter_number: 2,
+      chapter_title: '第 2 章 · 灰塔证词',
+      key_events: [
+        { stage: '发现', summary: '闫岚在归档页里找到灰塔印记。' },
+        { stage: '转折', summary: '证词白页证明有人主动删除编号。' },
+      ],
+      related_characters: [{ name: '闫岚', role: '调查者' }, { name: '顾临舟', role: '线索提供者' }],
+    },
+  };
+  vi.mocked(api.listRecords).mockImplementation((projectId, resource) => {
+    if (projectId === mockProject.id && resource === 'outlines') return Promise.resolve([outlineRecord]);
+    return Promise.resolve([]);
+  });
+
+  render(<App />);
+  fireEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: /大纲/ }));
+  await screen.findByText('第 2 章 · 灰塔证词');
+
+  fireEvent.change(screen.getByLabelText('选择章节大纲'), { target: { value: 'outline-1' } });
+
+  expect(screen.getByLabelText('关键事件')).toHaveValue(
+    '发现：闫岚在归档页里找到灰塔印记。\n转折：证词白页证明有人主动删除编号。',
+  );
+  expect(screen.getByLabelText('关联角色')).toHaveValue('闫岚：调查者、顾临舟：线索提供者');
+  expect(screen.queryByDisplayValue(/\[object Object\]/)).not.toBeInTheDocument();
+});
+
 test('splits multi-chapter AI outline JSON into chapter candidate cards', async () => {
   mockProjectApi();
   vi.spyOn(api, 'runAi').mockResolvedValue({
@@ -1312,6 +1367,26 @@ test('shows local fallback as an error instead of generated chapter prose', asyn
   expect(screen.queryByText(/这是本地 MVP 的可编辑 AI 占位结果/)).not.toBeInTheDocument();
 });
 
+test('allows local chapter prose when the backend returns a real draft', async () => {
+  mockProjectApi();
+  vi.mocked(api.listChapters).mockResolvedValue([mockChapter]);
+  vi.spyOn(api, 'runAi').mockResolvedValue({
+    workflow: 'generate_chapter_draft',
+    text: '第 1 章 · 第一章\n\n她推开档案室的门，知道这一页不会再替她撒谎。',
+    status: 'local',
+    error: '当前使用本地占位模型。',
+    score: 0,
+    items: [],
+  });
+
+  render(<App />);
+  await screen.findByDisplayValue('第一章');
+  fireEvent.click(screen.getByText('一键生成本章正文'));
+
+  expect(await screen.findByText(/她推开档案室的门/)).toBeInTheDocument();
+  expect(screen.queryByText(/当前没有可用于该任务的远程模型/)).not.toBeInTheDocument();
+});
+
 test('describes timeout fallback as slow generation instead of model failure', async () => {
   mockProjectApi();
   vi.spyOn(api, 'runAi').mockResolvedValue({
@@ -1452,6 +1527,36 @@ test('renders fixed AI result actions in the chapter editor', () => {
   expect(screen.getByText('替换选中内容')).toBeInTheDocument();
   expect(screen.getByText('保存为版本')).toBeInTheDocument();
   expect(screen.getByText('收藏到灵感库')).toBeInTheDocument();
+});
+
+test('surfaces duplicate unnamed style profiles as a quality issue', async () => {
+  const duplicateStyleProfiles: GenericRecord[] = [
+    {
+      id: 'style-1',
+      title: '未命名风格样本',
+      category: 'style',
+      content: '样本一',
+      status: 'active',
+    },
+    {
+      id: 'style-2',
+      title: '未命名风格样本',
+      category: 'style',
+      content: '样本二',
+      status: 'active',
+    },
+  ];
+  mockProjectApi();
+  vi.mocked(api.listRecords).mockImplementation((projectId, resource) => {
+    if (projectId === mockProject.id && resource === 'style-profiles') return Promise.resolve(duplicateStyleProfiles);
+    return Promise.resolve([]);
+  });
+
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: /风格学习/ }));
+
+  expect(await screen.findByText('风格档案质量提醒')).toBeInTheDocument();
+  expect(screen.getByText(/有 2 个档案仍使用未命名标题/)).toBeInTheDocument();
 });
 
 test('chapter editor exposes real generation and version actions', () => {

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import socket
 import urllib.error
 import urllib.parse
@@ -464,7 +465,7 @@ def select_chapter_version(project_id: str, chapter_id: str, version_id: str) ->
 @app.post("/api/projects/{project_id}/chapters/{chapter_id}/finalize")
 def finalize_chapter(project_id: str, chapter_id: str) -> dict[str, Any]:
     chapter = require_chapter(project_id, chapter_id)
-    summary = chapter["summary"] or f"第 {chapter['chapter_number']} 章定稿：{chapter['draft'][:80]}"
+    summary = chapter["summary"] or chapter["brief"] or f"第 {chapter['chapter_number']} 章定稿：{chapter['draft'][:80]}"
     now = utc_now()
     with connect() as conn:
         conn.execute(
@@ -480,15 +481,71 @@ def finalize_chapter(project_id: str, chapter_id: str) -> dict[str, Any]:
             (memory_id, project_id, f"第 {chapter['chapter_number']} 章摘要", summary, now, now),
         )
         updated = row_to_dict(conn.execute("SELECT * FROM chapters WHERE id = ?", (chapter_id,)).fetchone())
-    append_wiki_page(project_id, "global-summary.md", f"\n\n## 第 {chapter['chapter_number']} 章\n\n{summary}", chapter_id)
     sync_chapter_memory_to_wiki(project_id, updated)
+    rebuild_volume_memory(project_id, volume_name_for_chapter(updated))
     return updated
+
+
+def volume_name_for_chapter(_chapter: dict[str, Any] | None = None) -> str:
+    return "第一卷"
+
+
+BODY_MEMORY_PATH = "关键记忆.md"
+
+
+def chapter_memory_summary(chapter: dict[str, Any]) -> str:
+    summary = str(chapter.get("summary") or chapter.get("brief") or (chapter.get("draft") or "")[:160] or "暂无摘要")
+    return str(trim_text(summary, 260))
+
+
+def volume_memory_path(_volume_name: str) -> str:
+    return BODY_MEMORY_PATH
+
+
+def rebuild_volume_memory(project_id: str, volume_name: str = "第一卷") -> dict[str, Any]:
+    with connect() as conn:
+        chapters = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id, chapter_number, title, brief, summary, draft, status
+                FROM chapters
+                WHERE project_id = ? AND status = 'final'
+                ORDER BY chapter_number
+                """,
+                (project_id,),
+            ).fetchall()
+        )
+    lines = [
+        "# 关键记忆",
+        "",
+        "本文件只保存章节定稿后的关键事实、状态变化和反重复提示；正文全文保存在章节草稿与导出文件中。",
+        "",
+    ]
+    for chapter in chapters:
+        chapter_number = chapter.get("chapter_number") or 0
+        title = clean_chapter_title(chapter)
+        summary = chapter_memory_summary(chapter)
+        change = narrative_focus_from_brief(str(chapter.get("brief") or ""), title)
+        if change == f"一份与“{title}”有关的旧档案正在灰塔深处苏醒":
+            change = summary
+        lines.extend(
+            [
+                f"## 第 {chapter_number} 章 · {title}",
+                f"- 主要事件：{summary}",
+                f"- 关键变化：{change or summary}",
+                f"- 已用冲突：{summary}",
+                "- 已埋伏笔：见本项目伏笔与时间线记录。",
+                f"- 不要重复：不要再次生成“{summary}”这一事件、信息揭示或冲突解决方式。",
+                "",
+            ]
+        )
+    return upsert_wiki_page(project_id, volume_memory_path(volume_name), "\n".join(lines).rstrip() + "\n")
 
 
 def sync_chapter_memory_to_wiki(project_id: str, chapter: dict[str, Any]) -> None:
     chapter_number = chapter.get("chapter_number") or 0
     title = chapter.get("title") or f"第 {chapter_number} 章"
-    summary = chapter.get("summary") or (chapter.get("draft") or "")[:120]
+    summary = chapter.get("summary") or chapter.get("brief") or (chapter.get("draft") or "")[:120]
     draft = chapter.get("draft") or ""
     create_structured_record(
         project_id,
@@ -521,7 +578,6 @@ def sync_chapter_memory_to_wiki(project_id: str, chapter: dict[str, Any]) -> Non
             },
             "open",
         )
-    append_wiki_page(project_id, "chapters/index.md", f"\n\n## {title}\n\n{summary}", str(chapter.get("id") or ""))
 
 
 def write_chapter_snapshot(project_id: str, chapter: dict[str, Any]) -> None:
@@ -674,7 +730,6 @@ def sync_record_to_wiki(project_id: str, resource: str, record: dict[str, Any]) 
     elif resource == "character-relationships":
         upsert_wiki_page(project_id, "relationships.md", aggregate_markdown(project_id, "character-relationships", "角色关系图"))
     elif resource == "outlines":
-        upsert_wiki_page(project_id, f"outlines/{filename}.md", markdown_for_record(resource, record))
         upsert_wiki_page(project_id, "outline.md", aggregate_outline_markdown(project_id))
     elif resource == "style-profiles":
         upsert_wiki_page(project_id, f"styles/{filename}.md", markdown_for_record(resource, record))
@@ -691,11 +746,7 @@ def sync_record_to_wiki(project_id: str, resource: str, record: dict[str, Any]) 
 
 
 def delete_record_from_wiki(project_id: str, resource: str, record: dict[str, Any]) -> None:
-    payload = record_payload(record)
-    title = str(record.get("title") or payload.get("name") or record.get("id") or "未命名")
-    filename = safe_wiki_filename(title, str(record.get("id") or "record"))
     if resource == "outlines":
-        delete_wiki_page(project_id, f"outlines/{filename}.md")
         upsert_wiki_page(project_id, "outline.md", aggregate_outline_markdown(project_id))
 
 
@@ -712,22 +763,58 @@ def list_records_for_context(project_id: str, resource: str, limit: int = 20) ->
 
 def build_generation_context(project_id: str, chapter_id: str = "") -> dict[str, Any]:
     chapter = require_chapter(project_id, chapter_id) if chapter_id else None
+    volume_name = volume_name_for_chapter(chapter)
+    volume_path = volume_memory_path(volume_name)
     with connect() as conn:
-        recent_chapters = rows_to_dicts(
-            conn.execute(
-                "SELECT id, chapter_number, title, brief, summary FROM chapters WHERE project_id = ? ORDER BY chapter_number DESC LIMIT 3",
-                (project_id,),
-            ).fetchall()
-        )
+        if chapter:
+            recent_chapters = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT id, chapter_number, title, brief, summary
+                    FROM chapters
+                    WHERE project_id = ? AND chapter_number < ?
+                    ORDER BY chapter_number DESC
+                    LIMIT 3
+                    """,
+                    (project_id, chapter.get("chapter_number") or 0),
+                ).fetchall()
+            )
+        else:
+            recent_chapters = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT id, chapter_number, title, brief, summary
+                    FROM chapters
+                    WHERE project_id = ?
+                    ORDER BY chapter_number DESC
+                    LIMIT 3
+                    """,
+                    (project_id,),
+                ).fetchall()
+            )
         wiki_pages = rows_to_dicts(
             conn.execute(
                 "SELECT path, title, content FROM wiki_pages WHERE project_id = ? ORDER BY updated_at DESC LIMIT 12",
                 (project_id,),
             ).fetchall()
         )
+        volume_memory = row_to_dict(
+            conn.execute(
+                "SELECT path, title, content FROM wiki_pages WHERE project_id = ? AND path = ?",
+                (project_id, volume_path),
+            ).fetchone()
+        )
+    if not volume_memory:
+        volume_memory = rebuild_volume_memory(project_id, volume_name)
     return {
         "chapter": chapter,
         "recent_chapters": recent_chapters,
+        "volume_memory": volume_memory,
+        "anti_repetition_notes": (
+            f"生成新大纲或正文前必须读取 {volume_path}，避免重复本卷已发生事件、信息揭示、冲突解决方式和伏笔呈现。"
+            if volume_memory
+            else f"当前尚无 {volume_path}；定稿章节后会重建本卷记忆。"
+        ),
         "characters": list_records_for_context(project_id, "character-profiles"),
         "relationships": list_records_for_context(project_id, "character-relationships"),
         "outlines": list_records_for_context(project_id, "outlines"),
@@ -793,6 +880,16 @@ def compact_chapter_for_prompt(chapter: dict[str, Any] | None) -> dict[str, Any]
 def compact_generation_context(context: dict[str, Any]) -> dict[str, Any]:
     return {
         "chapter": compact_chapter_for_prompt(context.get("chapter")),
+        "volume_memory": (
+            {
+                "path": context["volume_memory"].get("path", ""),
+                "title": context["volume_memory"].get("title", ""),
+                "content": trim_text(context["volume_memory"].get("content", ""), 2600),
+            }
+            if isinstance(context.get("volume_memory"), dict)
+            else None
+        ),
+        "anti_repetition_notes": trim_text(context.get("anti_repetition_notes", ""), 1000),
         "recent_chapters": [
             {
                 "id": chapter.get("id", ""),
@@ -900,6 +997,14 @@ def wiki_search(project_id: str, q: str = "") -> list[dict[str, Any]]:
             (project_id, f"%{q}%", f"%{q}%"),
         ).fetchall()
         return rows_to_dicts(rows)
+
+
+@app.get("/api/projects/{project_id}/wiki/count")
+def wiki_count(project_id: str) -> dict[str, int]:
+    require_project(project_id)
+    with connect() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM wiki_pages WHERE project_id = ?", (project_id,)).fetchone()[0]
+    return {"count": int(count)}
 
 
 @app.get("/api/projects/{project_id}/wiki/revisions")
@@ -1073,6 +1178,7 @@ def test_model_connection(project_id: str, payload: ModelConnectionTestIn) -> di
 def run_ai_workflow(project_id: str, workflow: str, payload: AiWorkflowIn) -> dict[str, Any]:
     require_project(project_id)
     context = build_generation_context(project_id, payload.chapter_id)
+    validate_workflow_prerequisites(workflow, context)
     output = run_model_or_stub(project_id, workflow, payload, context)
     output["context"] = context
     output_status = output.get("status") or "success"
@@ -1114,6 +1220,19 @@ def run_ai_workflow(project_id: str, workflow: str, payload: AiWorkflowIn) -> di
                 VersionIn(label=f"AI 版本 {index + 1}", content=f"{output['text']}\n\n候选版本 {index + 1}。"),
             )
     return output
+
+
+def validate_workflow_prerequisites(workflow: str, context: dict[str, Any]) -> None:
+    if workflow != "generate_chapter_draft":
+        return
+    missing: list[str] = []
+    if not context.get("characters"):
+        missing.append("先生成并保存角色")
+    if not context.get("outlines"):
+        missing.append("再生成并保存大纲")
+    if missing:
+        detail = "生成正文前需要按顺序准备素材：" + "，".join(missing) + "。"
+        raise HTTPException(status_code=409, detail=detail)
 
 
 CHARACTER_STUBS: list[dict[str, str]] = [
@@ -1213,16 +1332,26 @@ def structured_output_for_workflow(workflow: str, payload: AiWorkflowIn, context
         return character_stub_for_payload(payload, context)
     if workflow in {"generate_outline", "generate_chapter_brief"}:
         chapter = context.get("chapter") or {}
+        chapter_number = int(chapter.get("chapter_number") or 0)
+        title = clean_chapter_title(chapter)
+        focus = title or payload.prompt or "记忆古籍"
+        protagonist = primary_character_name(context)
+        arc = local_arc_for_chapter(chapter_number or 1)
         return {
             "volume": "第一卷",
-            "chapter_title": chapter.get("title") or "未命名章节",
-            "chapter_goal": payload.prompt or "推进主角发现古籍代价",
-            "main_conflict": "主角想获得真相，但每次改写都会损失记忆。",
-            "key_events": "发现线索；遭遇阻碍；做出选择；留下新的悬念。",
-            "emotional_rhythm": "压抑开场，中段紧张，结尾留钩子。",
-            "foreshadowing": "古籍的代价尚未完全揭示。",
-            "hook": "她发现自己忘记了一个本不该忘记的人。",
-            "related_characters": "沈照夜",
+            "chapter_title": chapter.get("title") or f"第 {chapter_number or '?'} 章 · {focus}",
+            "chapter_goal": payload.prompt or f"围绕{focus}推进主线，并承接{arc}",
+            "main_conflict": f"{protagonist}必须追查{focus}，但每推进一步都会让既有记忆和同盟信任出现缺口。",
+            "key_events": (
+                f"{protagonist}在{focus}中取得本章独有线索；"
+                f"线索触发与第 {chapter_number or '?'} 章阶段目标相关的新阻碍；"
+                "角色做出会改变后续关系的选择；"
+                f"结尾把{focus}的后果留到下一章继续偿还。"
+            ),
+            "emotional_rhythm": f"以{focus}带来的不安开场，中段升高外部压力，结尾留下具体代价。",
+            "foreshadowing": f"{focus}背后的代价尚未完全揭示，但已经影响{arc}",
+            "hook": f"{protagonist}发现{focus}留下的痕迹指向一个更早被抹去的决定。",
+            "related_characters": protagonist,
             "completion_status": "草稿",
         }
     if workflow == "extract_timeline_events":
@@ -1238,6 +1367,135 @@ def structured_output_for_workflow(workflow: str, payload: AiWorkflowIn, context
     if workflow == "check_taboo_rules":
         return {"risk_level": "低", "issues": [], "suggestion": "未发现明显雷点，可继续人工复核。"}
     return None
+
+
+LONG_FORM_ARCS = [
+    "开端卷：建立主角目标、核心代价和第一批关键同盟。",
+    "扩展卷：让线索外溢到更大的城市系统，旧胜利开始反噬。",
+    "中段卷：揭示敌我双方都在利用同一套记忆规则。",
+    "低谷卷：主角为保住同伴主动承担更沉重的遗忘。",
+    "收束卷：所有伏笔回到主线，真相、代价和选择同时结算。",
+]
+
+
+def local_arc_for_chapter(chapter_number: int) -> str:
+    index = min(len(LONG_FORM_ARCS) - 1, max(0, (chapter_number - 1) // 20))
+    return LONG_FORM_ARCS[index]
+
+
+def clean_chapter_title(chapter: dict[str, Any]) -> str:
+    chapter_number = chapter.get("chapter_number") or 0
+    raw_title = str(chapter.get("title") or f"第 {chapter_number} 章")
+    prefixes = [
+        f"第{chapter_number}章",
+        f"第 {chapter_number} 章",
+        f"第{chapter_number} 章",
+        f"第 {chapter_number}章",
+    ]
+    for prefix in prefixes:
+        if raw_title.startswith(prefix):
+            return raw_title[len(prefix) :].lstrip(" ·:：-—").strip() or raw_title
+    return raw_title
+
+
+def recent_chapter_line(context: dict[str, Any]) -> str:
+    recent = [item for item in context.get("recent_chapters") or [] if isinstance(item, dict)]
+    if not recent:
+        return "前文尚未定型，主角只能依靠最初的目标继续向前。"
+    latest = sorted(recent, key=lambda item: item.get("chapter_number") or 0, reverse=True)[0]
+    title = latest.get("title") or f"第 {latest.get('chapter_number') or '?'} 章"
+    summary = latest.get("summary") or latest.get("brief") or "前文留下了未解决的压力。"
+    return f"上一章《{title}》留下的后果仍在发酵：{summary}"
+
+
+def narrative_focus_from_brief(brief: str, title: str) -> str:
+    stripped = brief.strip().strip("。")
+    outline_markers = ["推进主线", "埋下", "回收", "建立：", "扩展：", "中段：", "低谷：", "收束："]
+    if not stripped:
+        return f"一份与“{title}”有关的旧档案正在灰塔深处苏醒"
+    if any(marker in stripped for marker in outline_markers):
+        quoted = re.search(r"“([^”]+)”", stripped)
+        focus = quoted.group(1) if quoted else title
+        return f"一份与“{focus}”有关的旧档案正在灰塔深处苏醒"
+    return stripped
+
+
+def primary_character_name(context: dict[str, Any]) -> str:
+    characters = [item for item in context.get("characters") or [] if isinstance(item, dict)]
+    if not characters:
+        return "主角"
+    for character in characters:
+        payload = character.get("payload") if isinstance(character.get("payload"), dict) else {}
+        marker_text = " ".join(
+            str(value)
+            for value in [character.get("category"), character.get("content"), payload.get("role"), payload.get("notes")]
+            if value
+        )
+        if "主角" in marker_text or "protagonist" in marker_text.lower():
+            return str(payload.get("name") or character.get("title") or "主角")
+    ordered = sorted(characters, key=lambda item: str(item.get("created_at") or item.get("updated_at") or ""))
+    payload = ordered[0].get("payload") if isinstance(ordered[0].get("payload"), dict) else {}
+    return str(payload.get("name") or ordered[0].get("title") or "主角")
+
+
+def outline_focus_for_chapter(context: dict[str, Any], chapter_number: int, title: str) -> str:
+    outlines = [item for item in context.get("outlines") or [] if isinstance(item, dict)]
+    for outline in outlines:
+        payload = outline.get("payload") if isinstance(outline.get("payload"), dict) else {}
+        if str(payload.get("chapter_number") or "") == str(chapter_number):
+            return str(payload.get("chapter_goal") or outline.get("content") or "")
+        outline_title = str(payload.get("chapter_title") or outline.get("title") or "")
+        if title and title in outline_title:
+            return str(payload.get("chapter_goal") or outline.get("content") or "")
+    return ""
+
+
+def build_local_chapter_draft(payload: AiWorkflowIn, context: dict[str, Any]) -> str:
+    chapter = context.get("chapter") if isinstance(context.get("chapter"), dict) else {}
+    chapter_number = int(chapter.get("chapter_number") or 1)
+    title = clean_chapter_title(chapter)
+    protagonist = primary_character_name(context)
+    outline_focus = outline_focus_for_chapter(context, chapter_number, title)
+    brief = narrative_focus_from_brief(
+        str(outline_focus or chapter.get("brief") or payload.prompt or f"{protagonist}继续追查记忆古籍的代价。"),
+        title,
+    )
+    previous = recent_chapter_line(context)
+    motif = ["雨声", "旧纸气味", "钟楼回音", "玻璃反光", "档案灰尘"][chapter_number % 5]
+    pressure = ["同盟隐瞒了证词", "敌人提前一步清理线索", "记忆账本出现空页", "城市广播念出陌生名单"][chapter_number % 4]
+    choice = ["暂时相信最危险的人", "烧掉能证明清白的记录", "把自己的记忆交给同伴保管", "公开一个会引来追捕的真相"][chapter_number % 4]
+
+    return "\n\n".join(
+        [
+            f"第 {chapter_number} 章 · {title}",
+            (
+                f"{motif}贴着灰塔外墙往上爬，像有人在玻璃背后用指节轻敲。{protagonist}把湿透的外套搭在臂弯，"
+                f"站在档案层的门禁前，没有立刻伸手。{previous}"
+                f"她原以为上一卷的胜利至少能换来片刻喘息，可门禁屏幕上滚动的字提醒她："
+                f"{brief}。"
+            ),
+            (
+                f"门开时，冷光从缝隙里铺出来，照见一排排没有编号的抽屉。守夜人靠在墙边，"
+                f"指尖夹着一张缺角的借阅卡。“你确定要进去？”他问。"
+                f"{protagonist}看着卡片背面新出现的划痕，低声说：“如果答案已经在里面等我，我不进去，它也会出来找我。”"
+            ),
+            (
+                f"档案层深处没有脚步声，只有机器吞吐纸页的细响。她沿着旧索引寻找灰塔回声的源头，"
+                f"却在第三只抽屉里看见自己的签名。签名下面压着一段被刮去日期的证词，"
+                f"证词里写着她曾亲手关闭一座避难所。她的指腹停在墨迹上，胸口像被慢慢拧紧。"
+            ),
+            (
+                f"就在这时，{pressure}。守夜人脸色变了，反手按住警报器。"
+                f"“现在退走还来得及。”他说。{protagonist}听见远处电梯开始上行，数字一格一格亮起。"
+                f"她把证词折进掌心，回答：“来不及的不是我，是那些以为我还会忘记的人。”"
+            ),
+            (
+                f"她选择{choice}。这个决定并不英勇，甚至显得鲁莽，可它让所有躲在暗处的安排第一次失去准头。"
+                f"当电梯门在走廊尽头打开，{protagonist}已经撬开最后一只抽屉。里面没有完整档案，只有一枚裂开的印章，"
+                f"以及一行熟悉到令她发冷的笔迹：你赢过一次，所以他们学会了让胜利替你撒谎。"
+            ),
+        ]
+    )
 
 
 def build_stub_ai_output(
@@ -1266,11 +1524,12 @@ def build_stub_ai_output(
     }
     title = titles.get(workflow, workflow)
     structured = structured_output_for_workflow(workflow, payload, context)
-    text = (
-        json.dumps(structured, ensure_ascii=False, indent=2)
-        if structured is not None
-        else f"## {title}\n\n这是本地 MVP 的可编辑 AI 占位结果。输入提示：{payload.prompt or payload.content or '无'}"
-    )
+    if workflow == "generate_chapter_draft":
+        text = build_local_chapter_draft(payload, context)
+    elif structured is not None:
+        text = json.dumps(structured, ensure_ascii=False, indent=2)
+    else:
+        text = f"## {title}\n\n这是本地 MVP 的可编辑 AI 占位结果。输入提示：{payload.prompt or payload.content or '无'}"
     score = 82 if workflow == "score_chapter" else 0
     return {
         "workflow": workflow,
@@ -1302,6 +1561,7 @@ def system_prompt_for_workflow(workflow: str) -> str:
             "你是专业的中文长篇小说创作助手。当前任务是生成或改写小说正文。"
             "只返回可直接放入章节编辑器的中文正文，不要返回 JSON、Markdown 标题、chapter_id、drafts 数组或多个版本。"
             "必须参考上下文中的 llmwiki 记忆、角色、大纲、时间线、伏笔、雷点和知识库。"
+            "尤其要读取 volume_memory 和 anti_repetition_notes，避免重复本卷已发生事件、信息揭示、冲突解决方式。"
             "如果用户输入包含章节编号，以 chapter_number 为准，绝不要把 chapter_id 当成章节序号。"
         )
     if workflow in {"generate_outline", "generate_chapter_brief"}:
@@ -1310,6 +1570,7 @@ def system_prompt_for_workflow(workflow: str) -> str:
             "必须围绕当前章节标题展开，章节目标、冲突、关键事件、伏笔和结尾钩子都要服务于该标题。"
             "返回字段 chapter_title 必须包含章节数，格式使用“第 N 章 · 章节名”。"
             "必须先检查输入与 llmwiki 上下文中的 outlines、timeline、wiki_pages、foreshadowings。"
+            "尤其要读取 volume_memory 和 anti_repetition_notes，避免重复本卷已发生事件、信息揭示、冲突解决方式。"
             "不得生成与已有大纲、时间线或 llmwiki 页面相同或高度相似的事件；如果已有事件出现过，要设计新的推进、反转或后果。"
             "多章大纲必须让每章事件相互区分，不能用同一发现、追查、争执或反转重复填充。"
         )
@@ -1457,7 +1718,7 @@ def render_markdown(project_id: str) -> str:
     if project.get("synopsis"):
         lines.extend(["## 简介", "", project["synopsis"], ""])
     for chapter in chapters:
-        lines.extend([f"## 第 {chapter['chapter_number']} 章 {chapter['title']}", "", chapter["draft"] or "", ""])
+        lines.extend([f"## 第 {chapter['chapter_number']} 章 {clean_chapter_title(chapter)}", "", chapter["draft"] or "", ""])
     return "\n".join(lines)
 
 

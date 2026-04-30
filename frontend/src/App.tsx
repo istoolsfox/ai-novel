@@ -267,6 +267,7 @@ export default function App() {
   const [modelConfigs, setModelConfigs] = useState<GenericRecord[]>([]);
   const [taskRoutes, setTaskRoutes] = useState<GenericRecord[]>([]);
   const [wikiPages, setWikiPages] = useState<Array<{ path: string; content: string }>>([]);
+  const [wikiPageCount, setWikiPageCount] = useState(0);
   const [activeTab, setActiveTab] = useState<TabKey>('chapters');
   const [log, setLog] = useState('准备就绪');
   const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>({
@@ -366,6 +367,7 @@ export default function App() {
   useEffect(() => {
     if (selectedProject) {
       void loadChapters(selectedProject.id);
+      void loadWikiPageCount(selectedProject.id);
       void loadTabData(activeTab, selectedProject.id);
       void loadSettingsData(selectedProject.id);
       setPrivacyMode(Boolean(selectedProject.privacy_mode ?? true));
@@ -373,6 +375,7 @@ export default function App() {
       styleProfileLoadSeq.current += 1;
       setStyleProfileRecords([]);
       setSelectedStyleProfileId('');
+      setWikiPageCount(0);
     }
   }, [selectedProject, activeTab]);
 
@@ -383,8 +386,11 @@ export default function App() {
   }, [selectedProject]);
 
   useEffect(() => {
-    setDraft(selectedChapter?.draft ?? '');
-    if (selectedProject && selectedChapter) {
+    const chapterBelongsToProject = Boolean(
+      selectedProject && selectedChapter && selectedChapter.project_id === selectedProject.id,
+    );
+    setDraft(chapterBelongsToProject ? selectedChapter?.draft ?? '' : '');
+    if (selectedProject && selectedChapter && chapterBelongsToProject) {
       void loadVersions(selectedProject.id, selectedChapter.id);
     }
   }, [selectedChapter, selectedProject]);
@@ -420,6 +426,13 @@ export default function App() {
     setVersions(await api.listVersions(projectId, chapterId));
   }
 
+  async function loadWikiPageCount(projectId: string) {
+    const result = await api.wikiCount(projectId).catch(() => ({ count: 0 }));
+    if (isFreshProjectLoad(projectId)) {
+      setWikiPageCount(result.count);
+    }
+  }
+
   async function loadStyleProfileRecords(projectId: string) {
     if (selectedProjectRef.current?.id !== projectId) return;
     const seq = ++styleProfileLoadSeq.current;
@@ -438,6 +451,7 @@ export default function App() {
       const pages = await api.wikiSearch(projectId);
       if (seq === tabLoadSeq.current && tab === activeTabRef.current && isFreshProjectLoad(projectId)) {
         setWikiPages(pages);
+        setWikiPageCount(pages.length);
       }
       return;
     }
@@ -449,6 +463,7 @@ export default function App() {
       if (seq === tabLoadSeq.current && tab === activeTabRef.current && isFreshProjectLoad(projectId)) {
         setRecords(nextRecords);
         setWikiPages(pages);
+        setWikiPageCount(pages.length);
       }
       return;
     }
@@ -527,6 +542,7 @@ export default function App() {
           setVersions([]);
           setRecords([]);
           setWikiPages([]);
+          setWikiPageCount(0);
         }
       }
       setDeleteProjectTarget(null);
@@ -698,7 +714,8 @@ export default function App() {
         style_profiles: styleProfileRecords.map(({ id, title }) => ({ id, title })),
       });
       const message = formatAiLog(result);
-      if (result.status === 'local' || result.status === 'fallback') {
+      const isLegacyPlaceholder = result.text.includes('本地 MVP 的可编辑 AI 占位结果');
+      if (result.status === 'fallback' || (result.status === 'local' && isLegacyPlaceholder)) {
         failExecution(executionTitle, message);
         throw new Error(message);
       }
@@ -749,7 +766,10 @@ export default function App() {
     );
     if (!updated) return;
     setSelectedChapter(updated);
-    await loadTabData('wiki', selectedProject.id);
+    await loadWikiPageCount(selectedProject.id);
+    if (activeTabRef.current === 'wiki') {
+      await loadTabData('wiki', selectedProject.id);
+    }
   }
 
   async function selectVersion(versionId: string) {
@@ -783,6 +803,7 @@ export default function App() {
     if (!saved) return;
     setRecordTitle('');
     setRecordContent('');
+    await loadWikiPageCount(selectedProject.id);
     await loadTabData(activeTab, selectedProject.id);
   }
 
@@ -790,12 +811,49 @@ export default function App() {
     return record.payload?.[key];
   }
 
+  function structuredText(value: unknown, joiner = '\n'): string {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => structuredText(item, '；'))
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .join(joiner);
+    }
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      const title: string = structuredText(record.title ?? record.name ?? record.stage ?? record.event ?? record.label, '；').trim();
+      const body: string = structuredText(
+        record.summary ??
+          record.content ??
+          record.description ??
+          record.detail ??
+          record.role ??
+          record.identity ??
+          record.goal ??
+          record.purpose,
+        '；',
+      ).trim();
+      if (title && body && title !== body) return `${title}：${body}`;
+      if (title || body) return title || body;
+      return Object.entries(record)
+        .map(([key, item]) => {
+          const text: string = structuredText(item, '；').trim();
+          return text ? `${key}：${text}` : '';
+        })
+        .filter(Boolean)
+        .join('；');
+    }
+    return String(value);
+  }
+
   function payloadText(record: GenericRecord, key: string, fallback = '') {
     const value = payloadValue(record, key);
     if (value === undefined || value === null) return fallback;
-    if (Array.isArray(value)) return value.join('、');
-    if (typeof value === 'object') return JSON.stringify(value, null, 2);
-    return String(value);
+    const inlineKeys = ['related_characters', 'related_chapters', 'characters', 'tags'];
+    return structuredText(value, inlineKeys.includes(key) ? '、' : '\n') || fallback;
   }
 
   function selectCharacterRecord(record: GenericRecord) {
@@ -1200,7 +1258,8 @@ export default function App() {
   function mergeStringFields<T extends Record<string, string | undefined>>(current: T, source: Record<string, unknown>, keys: Array<keyof T>) {
     return keys.reduce<T>((next, key) => {
       const value = source[String(key)];
-      return typeof value === 'string' || typeof value === 'number' ? { ...next, [key]: String(value) } : next;
+      const text = structuredText(value);
+      return text ? { ...next, [key]: text } : next;
     }, current);
   }
 
@@ -1224,9 +1283,8 @@ export default function App() {
         const foundKey = aliases[field].find((key) => source[key] !== undefined && source[key] !== null);
         if (!foundKey) return payload;
         const value = source[foundKey];
-        if (Array.isArray(value)) return { ...payload, [field]: value.join('、') };
-        if (typeof value === 'object') return { ...payload, [field]: JSON.stringify(value, null, 2) };
-        return { ...payload, [field]: String(value) };
+        const text = structuredText(value, field === 'related_chapters' ? '、' : '\n');
+        return text ? { ...payload, [field]: text } : payload;
       },
       {},
     );
@@ -1251,9 +1309,8 @@ export default function App() {
       const foundKey = aliases[field].find((key) => source[key] !== undefined && source[key] !== null);
       if (!foundKey) return payload;
       const value = source[foundKey];
-      if (Array.isArray(value)) return { ...payload, [field]: value.join('\n') };
-      if (typeof value === 'object') return { ...payload, [field]: JSON.stringify(value, null, 2) };
-      return { ...payload, [field]: String(value) };
+      const text = structuredText(value, field === 'related_characters' ? '、' : '\n');
+      return text ? { ...payload, [field]: text } : payload;
     }, { ...emptyOutlineForm });
   }
 
@@ -1264,6 +1321,10 @@ export default function App() {
 
   function stripChapterNumberPrefix(value: string) {
     return value.replace(/^第\s*[\d一二三四五六七八九十百千万〇零两]+\s*章\s*[·：:、-]?\s*/, '').trim();
+  }
+
+  function displayChapterTitle(chapter: Chapter) {
+    return stripChapterNumberPrefix(chapter.title || '') || '未命名章节';
   }
 
   function chapterTitleWithNumber(title: string, chapterNumber: string) {
@@ -1648,7 +1709,11 @@ export default function App() {
     if (!saved) return;
     setEditingKnowledgeId('');
     setKnowledgeForm(emptyKnowledgeForm);
-    await Promise.all([loadTabData('knowledge', selectedProject.id), loadTabData('wiki', selectedProject.id)]);
+    await Promise.all([
+      loadTabData('knowledge', selectedProject.id),
+      activeTabRef.current === 'wiki' ? loadTabData('wiki', selectedProject.id) : Promise.resolve(),
+      loadWikiPageCount(selectedProject.id),
+    ]);
   }
 
   function applyCharacterAiResult(content: string) {
@@ -1728,6 +1793,7 @@ export default function App() {
       'Wiki 页面已写入当前项目 memory/wiki。',
     );
     if (!saved) return;
+    await loadWikiPageCount(selectedProject.id);
     await loadTabData('wiki', selectedProject.id);
   }
 
@@ -1963,6 +2029,7 @@ export default function App() {
   }
 
   const activeTabMeta = tabs.find((tab) => tab.key === activeTab);
+  const isWritingTab = activeTab === 'chapters';
   const executionBusy = executionStatus.state === 'running';
   const executionLabel =
     executionStatus.state === 'running'
@@ -2060,44 +2127,70 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="workspace">
-        <header className="topbar">
-          <div>
-            <span className="eyebrow">智能创作工作室</span>
-            <h2>{selectedProject?.title ?? '还没有项目'}</h2>
-            <p className="project-context">
-              {selectedProject
-                ? `所有操作写入 ${selectedProject.title} 的项目目录`
-                : '先从左侧项目库创建或选择小说项目'}
-            </p>
-          </div>
-          <div className="topbar-stack">
-            <div className="studio-command">
-              <Sparkles size={16} />
-              <span>/imagine 下一章的悬念、记忆线索与人物暗流</span>
+      <main className={isWritingTab ? 'workspace writing-workspace' : 'workspace'}>
+        {isWritingTab ? (
+          <header className="writing-dock">
+            <div>
+              <span className="eyebrow">写作工作台</span>
+              <strong>{selectedProject?.title ?? '还没有项目'}</strong>
+              <span>
+                {selectedChapter
+                  ? `第 ${selectedChapter.chapter_number} 章 · ${displayChapterTitle(selectedChapter)}`
+                  : '选择章节后开始写作'}
+              </span>
             </div>
-            <div className="claude-note">
-              <CheckCircle2 size={16} />
-              执行计划前读取并遵循 CLAUDE.md
+            <div className="writing-dock-actions">
+              <span>
+                <CheckCircle2 size={15} />
+                遵循 CLAUDE.md
+              </span>
+              <span>{authStatus.authenticated ? '云端账户已登录' : '本地优先'}</span>
+              <span>{modelLabel(modelForWorkflow('generate_chapter_draft'))}</span>
+              <span className={`writing-execution ${executionStatus.state}`} role="status" aria-live="polite">
+                {executionStatus.state === 'running' && <LoaderCircle className="execution-spinner" size={15} />}
+                {executionLabel}
+              </span>
             </div>
-            <div className="status-pill">
-              <span>{log}</span>
+          </header>
+        ) : (
+          <header className="topbar">
+            <div>
+              <span className="eyebrow">智能创作工作室</span>
+              <h2>{selectedProject?.title ?? '还没有项目'}</h2>
+              <p className="project-context">
+                {selectedProject
+                  ? `所有操作写入 ${selectedProject.title} 的项目目录`
+                  : '先从左侧项目库创建或选择小说项目'}
+              </p>
             </div>
-            <div className={`execution-status ${executionStatus.state}`} role="status" aria-live="polite">
-              {executionStatus.state === 'running' ? (
-                <LoaderCircle className="execution-spinner" size={16} />
-              ) : executionStatus.state === 'error' ? (
-                <ShieldAlert size={16} />
-              ) : (
+            <div className="topbar-stack">
+              <div className="studio-command">
+                <Sparkles size={16} />
+                <span>/imagine 下一章的悬念、记忆线索与人物暗流</span>
+              </div>
+              <div className="claude-note">
                 <CheckCircle2 size={16} />
-              )}
-              <div>
-                <strong>{executionLabel}</strong>
-                <span>{executionStatus.detail}</span>
+                执行计划前读取并遵循 CLAUDE.md
+              </div>
+              <div className="status-pill">
+                <span>{log}</span>
+              </div>
+              <div className={`execution-status ${executionStatus.state}`} role="status" aria-live="polite">
+                {executionStatus.state === 'running' ? (
+                  <LoaderCircle className="execution-spinner" size={16} />
+                ) : executionStatus.state === 'error' ? (
+                  <ShieldAlert size={16} />
+                ) : (
+                  <CheckCircle2 size={16} />
+                )}
+                <div>
+                  <strong>{executionLabel}</strong>
+                  <span>{executionStatus.detail}</span>
+                </div>
               </div>
             </div>
-          </div>
-        </header>
+          </header>
+        )}
 
         <nav className="tabs">
           {tabs.map((tab) => {
@@ -2117,7 +2210,7 @@ export default function App() {
           })}
         </nav>
 
-        {activeTabMeta && (
+        {activeTabMeta && !isWritingTab && (
           <section className="feature-explainer" aria-label="当前功能说明">
             <div>
               <span>当前入口说明</span>
@@ -2127,24 +2220,26 @@ export default function App() {
           </section>
         )}
 
-        <section className="context-strip" aria-label="工作台状态">
-          <div>
-            <span>运行模式</span>
-            <strong>{authStatus.authenticated ? '云端账户已登录' : '本地优先'}</strong>
-          </div>
-          <div>
-            <span>章节</span>
-            <strong>{chapters.length} 章</strong>
-          </div>
-          <div>
-            <span>记忆</span>
-            <strong>{wikiPages.length} 个 Wiki 页面</strong>
-          </div>
-          <div>
-            <span>AI 模型</span>
-            <strong>{modelLabel(modelForWorkflow('generate_chapter_draft'))}</strong>
-          </div>
-        </section>
+        {!isWritingTab && (
+          <section className="context-strip" aria-label="工作台状态">
+            <div>
+              <span>运行模式</span>
+              <strong>{authStatus.authenticated ? '云端账户已登录' : '本地优先'}</strong>
+            </div>
+            <div>
+              <span>章节</span>
+              <strong>{chapters.length} 章</strong>
+            </div>
+            <div>
+              <span>记忆</span>
+              <strong>{wikiPageCount} 个 Wiki 页面</strong>
+            </div>
+            <div>
+              <span>AI 模型</span>
+              <strong>{modelLabel(modelForWorkflow('generate_chapter_draft'))}</strong>
+            </div>
+          </section>
+        )}
 
         {activeTab === 'chapters' && (
           <NovelEditorPage
@@ -2157,7 +2252,7 @@ export default function App() {
             draft={draft}
             log={log}
             modelLabel={modelLabel(modelForWorkflow('generate_chapter_draft'))}
-            wikiPageCount={wikiPages.length}
+            wikiPageCount={wikiPageCount}
             onCreateChapter={() => void createChapter()}
             onDeleteChapter={(chapter) => void deleteChapter(chapter)}
             onSelectChapter={setSelectedChapter}

@@ -61,3 +61,44 @@ test('renders relationship nodes with dedicated polished graph styling', async (
   expect(characterNode).toHaveClass('story-character-node');
   expect(characterNode).toHaveAttribute('data-draggable-node', 'true');
 });
+
+test('surfaces relationship records with missing endpoints as quality issues', () => {
+  render(
+    <RelationshipGraphWorkbench
+      relationships={[
+        {
+          id: 'relationship-unknown',
+          title: '未知角色 → 未知角色',
+          category: '朋友',
+          content: '',
+          payload: {
+            source_character: '',
+            target_character: '',
+            relationship_type: '朋友',
+          },
+          status: 'active',
+        },
+      ]}
+      characters={[]}
+      form={{
+        source_character: '',
+        target_character: '',
+        relationship_type: '朋友',
+        strength: 50,
+        conflict: '',
+        change_history: '',
+        related_chapters: '',
+      }}
+      aiResults={[]}
+      modelLabel="本地模型"
+      onFormChange={vi.fn()}
+      onSaveRelationship={vi.fn()}
+      onCreateCharacter={vi.fn()}
+      onGenerate={vi.fn()}
+      onApplyResult={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByText('资料质量提醒')).toBeInTheDocument();
+  expect(screen.getByText(/有 1 条关系缺少来源或目标角色/)).toBeInTheDocument();
+});

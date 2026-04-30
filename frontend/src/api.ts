@@ -253,6 +253,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path, content }),
     }),
+  wikiCount: (projectId: string) => request<{ count: number }>(`/api/projects/${projectId}/wiki/count`),
   wikiSearch: (projectId: string, q = '') =>
     request<Array<{ path: string; content: string }>>(`/api/projects/${projectId}/wiki/search?q=${encodeURIComponent(q)}`),
 };

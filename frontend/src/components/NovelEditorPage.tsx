@@ -44,6 +44,28 @@ type SelectionRange = {
 const floatingSelectionActions = new Set(['润色', '扩写', '缩写', '改写风格', '生成对话', '检查逻辑', '加强冲突']);
 const toneOptions = ['悬疑', '克制', '热血', '暗黑', '轻松', '治愈', '紧张', '压抑', '浪漫', '诡秘', '燃向', '冷幽默', '悲壮', '荒诞', '温柔'];
 const styleOptions = ['网文爽感', '文学化表达', '电影感', '古风权谋', '都市悬疑', '群像史诗', '赛博朋克', '新怪谈', '意识流', '轻小说', '历史正剧', '黑色幽默', '悬疑推理', '成长流', '公路片'];
+const assistantActionGroups = [
+  {
+    label: '起草',
+    description: '从空白页推进到可编辑正文',
+    actions: ['一键生成本章正文', '续写当前章节', '生成下一段剧情'],
+  },
+  {
+    label: '修改',
+    description: '围绕现有段落增强表达',
+    actions: ['润色选中文本', '生成人物对话', '制造剧情冲突', '优化节奏'],
+  },
+  {
+    label: '检查',
+    description: '回看逻辑、伏笔与章节质量',
+    actions: ['检查逻辑漏洞', '伏笔回收建议'],
+  },
+];
+
+function chapterDisplayTitle(chapter: Chapter) {
+  const cleaned = (chapter.title || '未命名章节').replace(/^第\s*\d+\s*章\s*[·：:、-]?\s*/, '').trim();
+  return cleaned || '未命名章节';
+}
 
 function firstStringValue(value: unknown, keys: string[]): string {
   if (!value || typeof value !== 'object') return '';
@@ -442,7 +464,7 @@ function NovelSidebar({
                 <option value="">选择章节</option>
                 {chapters.map((chapter) => (
                   <option key={chapter.id} value={chapter.id}>
-                    第 {chapter.chapter_number} 章 · {chapter.title || '未命名章节'}
+                    第 {chapter.chapter_number} 章 · {chapterDisplayTitle(chapter)}
                   </option>
                 ))}
               </select>
@@ -542,7 +564,7 @@ function ChapterItem({
     <article className={selected ? 'chapter-item active' : 'chapter-item'}>
       <button className="chapter-item-main" onClick={onSelect}>
         <span>第 {chapter.chapter_number} 章</span>
-        <strong>{chapter.title || '未命名章节'}</strong>
+        <strong>{chapterDisplayTitle(chapter)}</strong>
         <small>{wordCount} 字 · {status}</small>
       </button>
       <button className="chapter-delete-button" aria-label={`删除章节 第 ${chapter.chapter_number} 章`} onClick={onDelete}>
@@ -753,18 +775,6 @@ function AIAssistantPanel({
   onDeleteResult: (id: string) => void;
   onSelectVersion: (versionId: string) => void;
 }) {
-  const actions = [
-    '一键生成本章正文',
-    '续写当前章节',
-    '润色选中文本',
-    '生成下一段剧情',
-    '生成人物对话',
-    '制造剧情冲突',
-    '优化节奏',
-    '检查逻辑漏洞',
-    '伏笔回收建议',
-  ];
-
   return (
     <aside className="ai-assistant-panel">
       <button className="rail-toggle right" onClick={onToggle} title={collapsed ? '展开 AI 助手' : '折叠 AI 助手'}>
@@ -777,14 +787,24 @@ function AIAssistantPanel({
             <h3>AI 创作副驾驶</h3>
             <small>{modelLabel}</small>
           </div>
-          <div className="ai-action-grid">
-            {actions.map((action) => (
-              <AIActionCard
-                key={action}
-                title={action}
-                disabled={isGenerating}
-                onClick={() => onAction(action)}
-              />
+          <div className="ai-action-groups">
+            {assistantActionGroups.map((group) => (
+              <section className="ai-action-group" key={group.label}>
+                <div className="ai-action-group-head">
+                  <strong>{group.label}</strong>
+                  <span>{group.description}</span>
+                </div>
+                <div className="ai-action-grid">
+                  {group.actions.map((action) => (
+                    <AIActionCard
+                      key={action}
+                      title={action}
+                      disabled={isGenerating}
+                      onClick={() => onAction(action)}
+                    />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
           <PromptInputBox

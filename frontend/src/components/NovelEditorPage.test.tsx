@@ -322,3 +322,14 @@ test('deletes the selected chapter from the chapter tree after confirmation', ()
 
   expect(onDeleteChapter).toHaveBeenCalledWith(expect.objectContaining({ id: 'chapter-1' }));
 });
+
+test('groups AI copilot actions by writing stage', () => {
+  renderNovelEditorPage();
+
+  expect(screen.getByText('起草')).toBeInTheDocument();
+  expect(screen.getByText('修改')).toBeInTheDocument();
+  expect(screen.getByText('检查')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /一键生成本章正文/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /润色选中文本/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /检查逻辑漏洞/ })).toBeInTheDocument();
+});

@@ -15,6 +15,26 @@ def make_client(monkeypatch, tmp_path):
     return TestClient(main.app)
 
 
+def create_story_prerequisites(client: TestClient, project_id: str, chapter_number: int = 1, chapter_title: str = "第一章"):
+    client.post(
+        f"/api/projects/{project_id}/character-profiles",
+        json={"title": "沈照夜", "category": "character", "content": "主角", "payload": {"name": "沈照夜"}},
+    )
+    client.post(
+        f"/api/projects/{project_id}/outlines",
+        json={
+            "title": f"{chapter_title}大纲",
+            "category": "chapter_outline",
+            "content": "主角发现关键线索并付出代价。",
+            "payload": {
+                "chapter_number": str(chapter_number),
+                "chapter_title": chapter_title,
+                "chapter_goal": "发现关键线索",
+            },
+        },
+    )
+
+
 def test_project_creation_creates_local_memory_directories(monkeypatch, tmp_path):
     client = make_client(monkeypatch, tmp_path)
 
@@ -129,6 +149,27 @@ def test_wiki_write_blocks_path_traversal_and_records_revisions(monkeypatch, tmp
     )
     assert revisions.status_code == 200
     assert len(revisions.json()) == 1
+
+
+def test_wiki_count_reports_project_memory_page_count(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"title": "记忆计数"}).json()
+
+    assert client.get(f"/api/projects/{project['id']}/wiki/count").json()["count"] == 0
+
+    client.post(
+        f"/api/projects/{project['id']}/wiki/write",
+        json={"path": "characters/heroine.md", "content": "# 女主\n\n她记得停摆日。"},
+    )
+    client.post(
+        f"/api/projects/{project['id']}/wiki/write",
+        json={"path": "outline.md", "content": "# 大纲\n\n一百章完本。"},
+    )
+
+    count = client.get(f"/api/projects/{project['id']}/wiki/count")
+
+    assert count.status_code == 200
+    assert count.json()["count"] == 2
 
 
 def test_export_only_contains_current_project_chapters(monkeypatch, tmp_path):
@@ -306,7 +347,7 @@ def test_outline_wiki_rebuilds_without_duplicate_chapter_sections(monkeypatch, t
     assert content.count("旧书夜市") == 1
 
 
-def test_deleting_outline_removes_synced_wiki_page_and_rebuilds_index(monkeypatch, tmp_path):
+def test_outline_sync_uses_single_aggregate_wiki_page(monkeypatch, tmp_path):
     client = make_client(monkeypatch, tmp_path)
     project = client.post("/api/projects", json={"title": "删除大纲"}).json()
     first = client.post(
@@ -328,14 +369,16 @@ def test_deleting_outline_removes_synced_wiki_page_and_rebuilds_index(monkeypatc
         },
     )
 
+    per_chapter_page = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "outlines/第一章大纲.md"})
+    count_before_delete = client.get(f"/api/projects/{project['id']}/wiki/count")
     deleted = client.delete(f"/api/projects/{project['id']}/outlines/{first['id']}")
     outline_index = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "outline.md"})
-    removed_page = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "outlines/第一章大纲.md"})
 
+    assert per_chapter_page.status_code == 404
+    assert count_before_delete.json()["count"] == 1
     assert deleted.status_code == 200
     assert "发现古籍" not in outline_index.json()["content"]
     assert "追查线索" in outline_index.json()["content"]
-    assert removed_page.status_code == 404
 
 
 def test_remote_outline_generation_prompt_requires_title_focus_and_no_duplicate_events(monkeypatch, tmp_path):
@@ -482,6 +525,206 @@ def test_ai_workflow_returns_structured_json_and_generation_context(monkeypatch,
     assert "本地占位" in draft_ai["error"]
 
 
+def test_local_chapter_draft_generates_chapter_specific_prose(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post(
+        "/api/projects",
+        json={
+            "title": "百章完本压力测试",
+            "target_chapter_count": 100,
+            "target_words_per_chapter": 1200,
+            "logline": "修档师在一百个记忆档案中追查城市停摆真相。",
+        },
+    ).json()
+    chapter = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={
+            "chapter_number": 37,
+            "title": "第37章 灰塔回声",
+            "brief": "扩展：闻岚处理第 37 份记忆档案，围绕“灰塔回声”推进主线，并发现上一卷的胜利其实留下新的代价。",
+        },
+    ).json()
+    client.post(
+        f"/api/projects/{project['id']}/character-profiles",
+        json={"title": "沈照夜", "category": "character", "content": "主角", "payload": {"name": "沈照夜"}},
+    )
+    client.post(
+        f"/api/projects/{project['id']}/outlines",
+        json={
+            "title": "第37章 灰塔回声大纲",
+            "category": "chapter_outline",
+            "content": "沈照夜在灰塔发现上一卷胜利留下的反噬证词。",
+            "payload": {
+                "chapter_number": "37",
+                "chapter_title": "灰塔回声",
+                "chapter_goal": "找到反噬证词",
+            },
+        },
+    )
+
+    response = client.post(
+        f"/api/projects/{project['id']}/ai/generate_chapter_draft",
+        json={"chapter_id": chapter["id"], "prompt": "写出本章正文，承接前文但推进新冲突。"},
+    )
+
+    assert response.status_code == 200
+    text = response.json()["text"]
+    assert "本地 MVP 的可编辑 AI 占位结果" not in text
+    assert "第 37 章" in text or "第37章" in text
+    assert "灰塔回声" in text
+    assert "沈照夜" in text
+    assert "反噬证词" in text
+    assert len(text) > 500
+    assert "。“" in text or "？”" in text or "！”" in text
+    outline_like_phrases = [
+        "本章目标",
+        "这一章属于",
+        "本章任务",
+        "下一章",
+        "任务记录",
+        "从任务变成",
+        "推进主线",
+        "埋下将在",
+        "开端建立",
+    ]
+    assert not any(phrase in text for phrase in outline_like_phrases)
+
+
+def test_generation_context_recent_chapters_excludes_current_chapter(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"title": "上下文连续性"}).json()
+    client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={
+            "chapter_number": 1,
+            "title": "第1章 第一封信",
+            "brief": "主角发现来信。",
+            "summary": "主角发现写着明天日期的来信。",
+        },
+    )
+    second = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={
+            "chapter_number": 2,
+            "title": "第2章 灰塔门禁",
+            "brief": "主角进入灰塔。",
+        },
+    ).json()
+    create_story_prerequisites(client, project["id"], 2, "灰塔门禁")
+
+    response = client.post(
+        f"/api/projects/{project['id']}/ai/generate_chapter_draft",
+        json={"chapter_id": second["id"], "prompt": "写第二章"},
+    )
+
+    assert response.status_code == 200
+    text = response.json()["text"]
+    assert "上一章《第1章 第一封信》" in text
+    assert "上一章《第2章 灰塔门禁》" not in text
+
+
+def test_chapter_draft_requires_saved_characters_and_outline(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"title": "顺序约束"}).json()
+    chapter = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={"chapter_number": 1, "title": "第一章 雨夜"},
+    ).json()
+
+    missing_all = client.post(
+        f"/api/projects/{project['id']}/ai/generate_chapter_draft",
+        json={"chapter_id": chapter["id"], "prompt": "直接写正文"},
+    )
+    client.post(
+        f"/api/projects/{project['id']}/character-profiles",
+        json={"title": "沈照夜", "category": "character", "content": "主角", "payload": {"name": "沈照夜"}},
+    )
+    missing_outline = client.post(
+        f"/api/projects/{project['id']}/ai/generate_chapter_draft",
+        json={"chapter_id": chapter["id"], "prompt": "直接写正文"},
+    )
+
+    assert missing_all.status_code == 409
+    assert "先生成并保存角色" in missing_all.json()["detail"]
+    assert missing_outline.status_code == 409
+    assert "再生成并保存大纲" in missing_outline.json()["detail"]
+
+
+def test_story_generation_flow_uses_saved_outline_for_distinct_chapter_memory(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"title": "真实链路"}).json()
+    first = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={"chapter_number": 1, "title": "第1章 雨夜古籍"},
+    ).json()
+    second = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={"chapter_number": 2, "title": "第2章 灰塔证词"},
+    ).json()
+
+    character_ai = client.post(
+        f"/api/projects/{project['id']}/ai/generate_characters",
+        json={"prompt": "生成主角闻岚"},
+    ).json()
+    character_payload = character_ai["structured"]
+    client.post(
+        f"/api/projects/{project['id']}/character-profiles",
+        json={
+            "title": character_payload["name"],
+            "category": "character",
+            "content": character_payload["desire"],
+            "payload": character_payload,
+        },
+    )
+
+    outlines = []
+    for chapter, clue in [(first, "雨夜古籍"), (second, "灰塔证词")]:
+        outline_ai = client.post(
+            f"/api/projects/{project['id']}/ai/generate_outline",
+            json={"chapter_id": chapter["id"], "prompt": f"生成{clue}章节大纲"},
+        ).json()
+        outline_payload = outline_ai["structured"]
+        outlines.append(outline_payload)
+        client.post(
+            f"/api/projects/{project['id']}/outlines",
+            json={
+                "title": outline_payload["chapter_title"],
+                "category": "chapter_outline",
+                "content": outline_payload["key_events"],
+                "payload": outline_payload | {"chapter_number": str(chapter["chapter_number"])},
+            },
+        )
+
+    assert outlines[0]["key_events"] != outlines[1]["key_events"]
+    assert "雨夜古籍" in json.dumps(outlines[0], ensure_ascii=False)
+    assert "灰塔证词" in json.dumps(outlines[1], ensure_ascii=False)
+
+    drafts = []
+    for chapter in [first, second]:
+        draft_ai = client.post(
+            f"/api/projects/{project['id']}/ai/generate_chapter_draft",
+            json={"chapter_id": chapter["id"], "prompt": "一键生成本章正文"},
+        ).json()
+        drafts.append(draft_ai["text"])
+        updated = client.patch(
+            f"/api/projects/{project['id']}/chapters/{chapter['id']}",
+            json={**chapter, "draft": draft_ai["text"]},
+        ).json()
+        assert updated["draft"] == draft_ai["text"]
+        client.post(f"/api/projects/{project['id']}/chapters/{chapter['id']}/finalize")
+
+    assert drafts[0] != drafts[1]
+    assert "雨夜古籍" in drafts[0]
+    assert "灰塔证词" in drafts[1]
+
+    key_memory = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "关键记忆.md"}).json()["content"]
+    assert "雨夜古籍" in key_memory
+    assert "灰塔证词" in key_memory
+    first_section = key_memory.split("## 第 1 章", 1)[1].split("## 第 2 章", 1)[0]
+    second_section = key_memory.split("## 第 2 章", 1)[1]
+    assert first_section != second_section
+
+
 def test_remote_chapter_draft_drops_frontend_generation_context_from_model_prompt(monkeypatch, tmp_path):
     client = make_client(monkeypatch, tmp_path)
     project = client.post("/api/projects", json={"title": "远程正文上下文"}).json()
@@ -516,6 +759,15 @@ def test_remote_chapter_draft_drops_frontend_generation_context_from_model_promp
             "category": "character",
             "content": "主角",
             "payload": {"name": "沈照夜", "desire": "查清古籍代价"},
+        },
+    )
+    client.post(
+        f"/api/projects/{project['id']}/outlines",
+        json={
+            "title": "第一章大纲",
+            "category": "chapter_outline",
+            "content": "雨夜发现古籍并付出记忆代价。",
+            "payload": {"chapter_number": "1", "chapter_title": "第一章"},
         },
     )
 
@@ -654,3 +906,148 @@ def test_finalize_chapter_extracts_memory_to_structured_records_and_wiki(monkeyp
     )
     assert wiki_timeline.status_code == 200
     assert wiki_foreshadowing.status_code == 200
+
+
+def test_finalized_chapters_rebuild_single_body_markdown_without_duplicate_sections(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"title": "卷级记忆"}).json()
+    first = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={
+            "chapter_number": 1,
+            "title": "第一章 旧书夜市",
+            "brief": "发现古籍",
+            "draft": "主角在旧书夜市发现无题古籍，并第一次付出记忆代价。",
+            "summary": "主角发现无题古籍，确认改写会吞噬记忆。",
+        },
+    ).json()
+    second = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={
+            "chapter_number": 2,
+            "title": "第二章 缺失的三分钟",
+            "brief": "确认交易生效",
+            "draft": "主角追查缺失的三分钟，发现借阅卡背面有警告。",
+            "summary": "主角确认古籍交易已经生效，并发现借阅卡背面的警告。",
+        },
+    ).json()
+
+    assert client.post(f"/api/projects/{project['id']}/chapters/{first['id']}/finalize").status_code == 200
+    assert client.post(f"/api/projects/{project['id']}/chapters/{second['id']}/finalize").status_code == 200
+    assert client.post(f"/api/projects/{project['id']}/chapters/{first['id']}/finalize").status_code == 200
+
+    volume = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "关键记忆.md"})
+    body_page = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "正文.md"})
+    legacy_index = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "chapters/index.md"})
+    legacy_global = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "global-summary.md"})
+
+    assert volume.status_code == 200
+    assert body_page.status_code == 404
+    assert legacy_index.status_code == 404
+    assert legacy_global.status_code == 404
+    content = volume.json()["content"]
+    assert "# 关键记忆" in content
+    assert "## 第 1 章 · 第一章 旧书夜市" in content
+    assert "## 第 2 章 · 第二章 缺失的三分钟" in content
+    assert "吞噬记忆" in content
+    assert "借阅卡背面的警告" in content
+    assert content.count("## 第 1 章") == 1
+    assert "不要重复" in content
+    assert "推进主线" not in content
+
+
+def test_remote_generation_prompt_includes_volume_memory_to_avoid_repetition(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"title": "卷级上下文"}).json()
+    first = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={
+            "chapter_number": 1,
+            "title": "第一章 旧书夜市",
+            "draft": "主角发现无题古籍。",
+            "summary": "主角发现无题古籍，确认改写会吞噬记忆。",
+        },
+    ).json()
+    second = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={"chapter_number": 2, "title": "第二章 缺失的三分钟", "brief": "追查后果"},
+    ).json()
+    client.post(f"/api/projects/{project['id']}/chapters/{first['id']}/finalize")
+    client.post(
+        f"/api/projects/{project['id']}/model-configs",
+        json={
+            "title": "测试模型",
+            "category": "OpenAI",
+            "payload": {
+                "api_key": "test-key",
+                "base_url": "https://example.test/v1",
+                "model_name": "writer-model",
+                "is_default": True,
+            },
+        },
+    )
+
+    import backend.app.main as main
+
+    captured: dict[str, str] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout=0):
+        captured["body"] = request.data.decode("utf-8")
+        return FakeResponse()
+
+    monkeypatch.setattr(main.urllib.request, "urlopen", fake_urlopen)
+
+    response = client.post(
+        f"/api/projects/{project['id']}/ai/generate_outline",
+        json={"chapter_id": second["id"], "prompt": "生成第二章大纲"},
+    )
+
+    assert response.status_code == 200
+    body = captured["body"]
+    assert "关键记忆.md" in body
+    assert "主角发现无题古籍" in body
+    assert "避免重复本卷已发生事件" in body
+
+
+def test_generation_context_lazily_rebuilds_missing_volume_memory(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"title": "懒重建卷级记忆"}).json()
+    first = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={
+            "chapter_number": 1,
+            "title": "第一章 旧书夜市",
+            "draft": "主角发现无题古籍。",
+            "summary": "主角发现无题古籍，确认改写会吞噬记忆。",
+        },
+    ).json()
+    second = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={"chapter_number": 2, "title": "第二章 缺失的三分钟"},
+    ).json()
+    client.post(f"/api/projects/{project['id']}/chapters/{first['id']}/finalize")
+
+    import backend.app.main as main
+
+    create_story_prerequisites(client, project["id"], 2, "第二章 缺失的三分钟")
+    main.delete_wiki_page(project["id"], "关键记忆.md")
+
+    response = client.post(
+        f"/api/projects/{project['id']}/ai/generate_chapter_draft",
+        json={"chapter_id": second["id"], "prompt": "写第二章"},
+    )
+    volume = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "关键记忆.md"})
+
+    assert response.status_code == 200
+    assert volume.status_code == 200
+    assert "主角发现无题古籍" in response.json()["context"]["volume_memory"]["content"]

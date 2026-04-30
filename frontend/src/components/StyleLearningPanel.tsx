@@ -1,4 +1,4 @@
-import { ChangeEvent } from 'react';
+import { ChangeEvent, useMemo } from 'react';
 import { FileText, Library, PenLine, Sparkles } from 'lucide-react';
 import { GenericRecord } from '../api';
 
@@ -35,6 +35,18 @@ export function StyleLearningPanel({
   onImitate,
   onSaveProfile,
 }: StyleLearningPanelProps) {
+  const qualityIssues = useMemo(() => {
+    const unnamedCount = records.filter((record) => !record.title.trim() || record.title === '未命名风格样本').length;
+    const titleCounts = records.reduce<Record<string, number>>((acc, record) => {
+      const title = record.title.trim();
+      if (!title) return acc;
+      acc[title] = (acc[title] ?? 0) + 1;
+      return acc;
+    }, {});
+    const duplicateTitleCount = Object.values(titleCounts).filter((count) => count > 1).length;
+    return { duplicateTitleCount, unnamedCount };
+  }, [records]);
+
   function importFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -129,6 +141,16 @@ export function StyleLearningPanel({
             <small>章节生成时可调用</small>
             <small>{records.length} 个</small>
           </div>
+          {(qualityIssues.unnamedCount > 0 || qualityIssues.duplicateTitleCount > 0) && (
+            <div className="quality-alert">
+              <strong>风格档案质量提醒</strong>
+              <p>
+                {qualityIssues.unnamedCount > 0 && `有 ${qualityIssues.unnamedCount} 个档案仍使用未命名标题。`}
+                {qualityIssues.duplicateTitleCount > 0 && ` 有 ${qualityIssues.duplicateTitleCount} 组档案标题重复。`}
+                建议重命名后再作为章节生成的风格来源。
+              </p>
+            </div>
+          )}
           {records.map((record) => (
             <article key={record.id}>
               <strong>{record.title}</strong>
