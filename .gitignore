@@ -1,11 +1,78 @@
+# ===== Python =====
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 .pytest_cache/
 .venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+
+# ===== Node / Frontend =====
 node_modules/
 dist/
+frontend/.vite/
+frontend/dist/
+*.tsbuildinfo
+.npm/
+
+# 旧前端备份（保留在本地，不上传）
+frontend-old/
+
+# ===== 构建产物 =====
+build/
+desktop/binaries/
+desktop/target/
+*.exe
+*.msi
+*.dmg
+*.deb
+*.AppImage
+
+# ===== 数据库 & 数据 =====
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
 data/
 projects/
 backend/app.db
-frontend/.vite/
-*.tsbuildinfo
+
+# ===== 日志 =====
+*.log
+backend-dev.log
+backend-dev.err.log
+frontend-dev.log
+frontend-dev.err.log
+
+# ===== IDE / 编辑器 =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===== WorkBuddy / AI 助手配置 =====
+.workbuddy/
+ai/
+CLAUDE.md
+
+# ===== 环境变量 / 密钥 =====
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ===== Tauri 构建缓存 =====
+desktop/gen/
+
+# ===== 临时文件 =====
+*.tmp
+*.bak
+*.cache

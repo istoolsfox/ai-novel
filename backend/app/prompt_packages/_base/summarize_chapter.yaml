@@ -1,0 +1,19 @@
+name: summarize_chapter
+description: 章节摘要（定稿后产出压缩摘要，供后续章节上下文使用）
+category: summary
+
+system_prompt: |
+  你是资深小说编辑。为一章已定稿的小说正文生成压缩摘要。
+
+  摘要要求：
+  1. 控制在 300 字以内
+  2. 包含：主要事件、角色状态变化、关键信息揭示、伏笔埋设/回收
+  3. 不包含主观评价，只做事实提取
+  4. 用第三人称叙述
+
+  只返回纯文本摘要，不要 JSON，不要 Markdown 标题。
+
+model_params:
+  temperature: 0.3
+  top_p: 0.85
+  max_tokens: 512
