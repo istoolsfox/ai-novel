@@ -3,6 +3,7 @@
 支持 markdown / txt / docx / pdf / epub 五种格式。
 """
 from io import BytesIO
+import re
 from typing import Any
 
 from fastapi import APIRouter, Response
@@ -33,8 +34,23 @@ def _render_markdown(project_id: str) -> str:
     if project.get("synopsis"):
         lines.extend(["## 简介", "", project["synopsis"], ""])
     for chapter in chapters:
-        lines.extend([f"## 第 {chapter['chapter_number']} 章 {clean_chapter_title(chapter)}", "", chapter["draft"] or "", ""])
+        lines.extend([
+            f"## 第 {chapter['chapter_number']} 章 {clean_chapter_title(chapter)}",
+            "",
+            _strip_embedded_chapter_heading(chapter),
+            "",
+        ])
     return "\n".join(lines)
+
+
+def _strip_embedded_chapter_heading(chapter: dict[str, Any]) -> str:
+    draft = (chapter.get("draft") or "").lstrip()
+    if not draft:
+        return ""
+    title = clean_chapter_title(chapter)
+    chapter_number = int(chapter.get("chapter_number") or 0)
+    heading_pattern = rf"^(?:第\s*{chapter_number}\s*章(?:\s*[·:：-]\s*{re.escape(title)})?|{re.escape(title)})\s*\n+"
+    return re.sub(heading_pattern, "", draft, count=1).lstrip()
 
 
 @router.get("/markdown", response_class=PlainTextResponse)

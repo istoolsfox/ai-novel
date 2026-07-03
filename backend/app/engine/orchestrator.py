@@ -73,6 +73,41 @@ def is_aborted(job_id: str) -> bool:
     return _JOB_ABORT_FLAGS.get(job_id, False)
 
 
+def _positive_int(value: Any) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return number if number > 0 else 0
+
+
+def _target_words_for_job(blueprint: dict[str, Any], project: dict[str, Any]) -> int:
+    generation_params = blueprint.get("generation_params")
+    if not isinstance(generation_params, dict):
+        generation_params = {}
+    return (
+        _positive_int(generation_params.get("words_per_chapter"))
+        or _positive_int(project.get("target_words_per_chapter"))
+        or 3000
+    )
+
+
+def _word_count_tolerance_for_job(blueprint: dict[str, Any]) -> float:
+    generation_params = blueprint.get("generation_params")
+    if not isinstance(generation_params, dict):
+        generation_params = {}
+    try:
+        tolerance = float(generation_params.get("word_count_tolerance", 0.6))
+    except (TypeError, ValueError):
+        return 0.6
+    return tolerance if 0.1 <= tolerance <= 1.0 else 0.6
+
+
+def _generation_params(blueprint: dict[str, Any]) -> dict[str, Any]:
+    params = blueprint.get("generation_params")
+    return params if isinstance(params, dict) else {}
+
+
 class Orchestrator:
     """Multi-chapter generation orchestrator. Runs in a background thread."""
 
@@ -111,7 +146,8 @@ class Orchestrator:
             except json.JSONDecodeError:
                 params = {}
 
-        skip_steps = set(params.get("skip_steps", []))
+        skip_steps = {str(step) for step in params.get("skip_steps", []) if isinstance(step, str)}
+        smart_stop_policy = str(params.get("smart_stop_policy") or "pause")
         blueprint_id = job.get("volume_blueprint_id", "")
         blueprint = {}
         if blueprint_id:
@@ -121,6 +157,13 @@ class Orchestrator:
                     blueprint = json.loads(bp["blueprint_json"])
                 except json.JSONDecodeError:
                     blueprint = {}
+        with connect() as conn:
+            project = row_to_dict(
+                conn.execute("SELECT target_words_per_chapter FROM projects WHERE id = ?", (project_id,)).fetchone()
+            ) or {}
+        target_words = _target_words_for_job(blueprint, project)
+        word_count_tolerance = _word_count_tolerance_for_job(blueprint)
+        generation_params = _generation_params(blueprint)
 
         # Mark job as running
         update_job_status(self.job_id, "running")
@@ -189,7 +232,10 @@ class Orchestrator:
                 project_id=project_id,
                 chapter_id=chapter_id,
                 chapter_number=chapter_number,
-                target_words=int(blueprint.get("generation_params", {}).get("words_per_chapter", 3000)),
+                target_words=target_words,
+                target_chapter_count=target_count,
+                is_final_chapter=offset == target_count - 1,
+                ending_required=bool(generation_params.get("ending_required")) or offset == target_count - 1,
                 blueprint=blueprint,
                 narrative_memory=narrative_memory,
             )
@@ -230,23 +276,26 @@ class Orchestrator:
                         "summary": ctx.summary,
                         "archaeology": ctx.archaeology,
                         "target_words": ctx.target_words,
+                        "word_count_tolerance": word_count_tolerance,
                         "volume_memory": None,  # Could fetch if needed
                     },
                 )
                 if should_stop:
-                    update_job_status(
-                        self.job_id, "checkpoint",
-                        current_step="smart_stop",
-                        pause_reason="smart_stop",
-                        pause_detail=reason,
-                    )
                     broadcast_event(self.job_id, {
                         "type": "smart_stop",
                         "chapter_number": chapter_number,
                         "reason": reason,
+                        "policy": smart_stop_policy,
                         "timestamp": utc_now(),
                     })
-                    return  # Thread exits; resume creates a new thread
+                    if smart_stop_policy != "warn":
+                        update_job_status(
+                            self.job_id, "checkpoint",
+                            current_step="smart_stop",
+                            pause_reason="smart_stop",
+                            pause_detail=reason,
+                        )
+                        return  # Thread exits; resume creates a new thread
 
                 # Scheduled checkpoint
                 if self.checkpoint.hit_checkpoint(checkpoint_strategy, offset):
@@ -283,14 +332,14 @@ class Orchestrator:
                     "error": str(exc),
                     "timestamp": utc_now(),
                 })
+                update_job_status(
+                    self.job_id,
+                    "failed",
+                    error_message=f"chapter {chapter_number} failed: {exc}",
+                )
                 if self.breaker.should_trip():
-                    update_job_status(
-                        self.job_id, "failed",
-                        error_message=f"circuit breaker: {self.breaker.consecutive_failures} consecutive failures. Last error: {exc}"
-                    )
                     broadcast_event(self.job_id, {"type": "circuit_breaker", "timestamp": utc_now()})
-                    return
-                continue
+                return
 
         # All chapters done
         update_job_status(self.job_id, "completed")
@@ -325,14 +374,14 @@ class Orchestrator:
         with connect() as conn:
             steps = rows_to_dicts(
                 conn.execute(
-                    "SELECT * FROM chapter_generation_steps WHERE job_id = ? AND chapter_number = ? ORDER BY step_index",
+                    "SELECT * FROM chapter_generation_steps WHERE job_id = ? AND chapter_number = ? ORDER BY created_at",
                     (self.job_id, chapter_number),
                 ).fetchall()
             )
         if not steps:
             return False
         required_steps = ["brief", "seed", "draft", "archaeology", "deepen", "finalize"]
-        completed_names = {s["step_name"] for s in steps if s.get("status") == "completed"}
+        completed_names = {s["step_name"] for s in steps if s.get("step_status") == "completed"}
         return all(name in completed_names for name in required_steps)
 
     def _on_step(self, chapter_number: int, step_name: str, status: str, data: dict[str, Any]) -> None:

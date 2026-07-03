@@ -20,10 +20,21 @@ const selectedBlueprintId = ref<string | null>(null);
 const startChapter = ref(1);
 const chapterCount = ref(10);
 const hostingMode = ref<"pure" | "checkpoint">("pure");
+const generationMode = ref<"fast" | "standard" | "deep">("standard");
 const checkpointInterval = ref(5);
 const autoFinalize = ref(true);
 const autoExport = ref(false);
 const starting = ref(false);
+const autopilotStarting = ref(false);
+
+function isBlueprintUsable(bp: Blueprint) {
+  return bp.status === "approved" || bp.status === "active";
+}
+
+function blueprintStatusLabel(status: string) {
+  if (status === "approved" || status === "active") return "已批准";
+  return "待批准";
+}
 
 onMounted(async () => {
   try {
@@ -32,7 +43,7 @@ onMounted(async () => {
     const queryBp = route.query.blueprint_id as string;
     if (queryBp) selectedBlueprintId.value = queryBp;
     else if (blueprints.value.length > 0) {
-      const approved = blueprints.value.find((b) => b.status === "approved");
+      const approved = blueprints.value.find(isBlueprintUsable);
       selectedBlueprintId.value = (approved || blueprints.value[0]).id;
     }
   } catch (e: any) {
@@ -42,9 +53,9 @@ onMounted(async () => {
 
 const blueprintOptions = computed(() =>
   blueprints.value.map((bp) => ({
-    label: `第 ${bp.volume_number} 卷 · ${bp.volume_title} (${bp.status === "approved" ? "已批准" : "待批准"})`,
+    label: `第 ${bp.volume_number} 卷 · ${bp.volume_title} (${blueprintStatusLabel(bp.status)})`,
     value: bp.id,
-    disabled: bp.status !== "approved",
+    disabled: !isBlueprintUsable(bp),
   })),
 );
 
@@ -67,6 +78,8 @@ async function handleStart() {
       auto_finalize: autoFinalize.value,
       params: {
         hosting_mode: hostingMode.value,
+        generation_mode: generationMode.value,
+        smart_stop_policy: hostingMode.value === "pure" ? "warn" : "pause",
         auto_export: autoExport.value,
       },
     });
@@ -79,6 +92,34 @@ async function handleStart() {
     message.error(`启动失败: ${e.message}`);
   } finally {
     starting.value = false;
+  }
+}
+
+async function handleAutopilotStart() {
+  autopilotStarting.value = true;
+  try {
+    const result = await jobApi.startAutopilot(projectId.value, {
+      start_chapter: startChapter.value,
+      count: chapterCount.value,
+      checkpoint_strategy: hostingMode.value === "checkpoint" ? `every_${checkpointInterval.value}` : "none",
+      auto_finalize: autoFinalize.value,
+      generation_mode: generationMode.value,
+      params: {
+        hosting_mode: hostingMode.value,
+        generation_mode: generationMode.value,
+        smart_stop_policy: hostingMode.value === "pure" ? "warn" : "pause",
+        auto_export: autoExport.value,
+      },
+    });
+    message.success("已自动准备素材并启动托管任务");
+    router.push({
+      name: "JobProgress",
+      params: { projectId: projectId.value, jobId: result.job.id },
+    });
+  } catch (e: any) {
+    message.error(`自动启动失败: ${e.message}`);
+  } finally {
+    autopilotStarting.value = false;
   }
 }
 </script>
@@ -131,6 +172,16 @@ async function handleStart() {
           <NText depth="3" style="margin-left: 12px; font-size: 13px">每 {{ checkpointInterval }} 章暂停一次</NText>
         </NFormItem>
 
+        <NFormItem label="生成深度">
+          <NRadioGroup v-model:value="generationMode">
+            <NSpace>
+              <NRadio value="fast">快速闭环</NRadio>
+              <NRadio value="standard">标准托管</NRadio>
+              <NRadio value="deep">完整九步</NRadio>
+            </NSpace>
+          </NRadioGroup>
+        </NFormItem>
+
         <NSpace>
           <NFormItem label="自动定稿">
             <NSwitch v-model:value="autoFinalize" />
@@ -142,6 +193,13 @@ async function handleStart() {
       </NForm>
 
       <NSpace justify="end" style="margin-top: 16px">
+        <NButton
+          size="large"
+          :loading="autopilotStarting"
+          @click="handleAutopilotStart"
+        >
+          自动准备并启动
+        </NButton>
         <NButton
           type="primary"
           size="large"

@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ...application.job_service import (
     abort_job,
@@ -16,6 +16,7 @@ from ...application.job_service import (
     resume_job,
     start_generation_job,
 )
+from ...application.autopilot_service import start_autopilot_generation_job
 from ...infrastructure.database import list_steps
 from ...infrastructure.storage import require_project
 from ...engine.orchestrator import consume_events, get_event_count
@@ -29,7 +30,16 @@ class JobStartIn(BaseModel):
     count: int = 1
     checkpoint_strategy: str = "none"
     auto_finalize: bool = True
-    params: dict[str, Any] = {}
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class AutopilotStartIn(BaseModel):
+    start_chapter: int = 1
+    count: int | None = None
+    generation_mode: str = "fast"
+    checkpoint_strategy: str = "none"
+    auto_finalize: bool = True
+    params: dict[str, Any] = Field(default_factory=dict)
 
 
 @router.post("")
@@ -40,6 +50,20 @@ def start_job_route(project_id: str, payload: JobStartIn) -> dict[str, Any]:
         blueprint_id=payload.blueprint_id,
         start_chapter=payload.start_chapter,
         target_count=payload.count,
+        checkpoint_strategy=payload.checkpoint_strategy,
+        auto_finalize=payload.auto_finalize,
+        params=payload.params,
+    )
+
+
+@router.post("/autopilot")
+def start_autopilot_job_route(project_id: str, payload: AutopilotStartIn) -> dict[str, Any]:
+    require_project(project_id)
+    return start_autopilot_generation_job(
+        project_id=project_id,
+        start_chapter=payload.start_chapter,
+        target_count=payload.count,
+        generation_mode=payload.generation_mode,
         checkpoint_strategy=payload.checkpoint_strategy,
         auto_finalize=payload.auto_finalize,
         params=payload.params,

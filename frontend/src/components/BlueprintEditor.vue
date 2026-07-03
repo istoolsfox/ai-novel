@@ -121,6 +121,14 @@ async function handleDelete(bp: Blueprint) {
   }
 }
 
+function isBlueprintApproved(bp: Blueprint) {
+  return bp.status === "approved" || bp.status === "active";
+}
+
+function blueprintStatusLabel(bp: Blueprint) {
+  return isBlueprintApproved(bp) ? "已批准" : "待批准";
+}
+
 function goToGenerate(bp: Blueprint) {
   router.push({ name: "Generate", params: { projectId: projectId.value }, query: { blueprint_id: bp.id } });
 }
@@ -159,9 +167,9 @@ async function handleAutoGenerate() {
             <span>第 {{ bp.volume_number }} 卷 · {{ bp.volume_title }}</span>
             <NTag
               size="small"
-              :type="bp.status === 'approved' ? 'success' : 'warning'"
+              :type="isBlueprintApproved(bp) ? 'success' : 'warning'"
             >
-              {{ bp.status === 'approved' ? '已批准' : '待批准' }}
+              {{ blueprintStatusLabel(bp) }}
             </NTag>
           </NSpace>
         </template>
@@ -177,7 +185,7 @@ async function handleAutoGenerate() {
           <NSpace justify="end">
             <NButton size="small" @click="openEdit(bp)">编辑</NButton>
             <NButton
-              v-if="bp.status !== 'approved'"
+              v-if="!isBlueprintApproved(bp)"
               size="small"
               type="success"
               @click="handleApprove(bp)"
@@ -185,7 +193,7 @@ async function handleAutoGenerate() {
             <NButton
               size="small"
               type="primary"
-              :disabled="bp.status !== 'approved'"
+              :disabled="!isBlueprintApproved(bp)"
               @click="goToGenerate(bp)"
             >启动生成</NButton>
             <NPopconfirm @positive-click="handleDelete(bp)">

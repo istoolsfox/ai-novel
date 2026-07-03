@@ -110,8 +110,9 @@ class CheckpointManager:
         target = ctx.get("target_words") or 0
         draft = ctx.get("draft") or ""
         actual = len(draft)
-        if target and (actual < target * 0.7 or actual > target * 1.3):
-            return f"word count deviation: target {target}, actual {actual}"
+        tolerance = _float_in_range(ctx.get("word_count_tolerance"), default=0.6, minimum=0.1, maximum=1.0)
+        if target and (actual < target * (1 - tolerance) or actual > target * (1 + tolerance)):
+            return f"word count deviation: target {target}, actual {actual}, tolerance {tolerance:.0%}"
         return ""
 
     def _check_bridge_continuity(self, project_id: str, ctx: dict[str, Any]) -> str:
@@ -196,3 +197,13 @@ class CheckpointManager:
         if not bigrams_a:
             return 0.0
         return len(bigrams_a & bigrams_b) / len(bigrams_a)
+
+
+def _float_in_range(value: Any, default: float, minimum: float, maximum: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number < minimum or number > maximum:
+        return default
+    return number

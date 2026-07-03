@@ -5,7 +5,8 @@ import {
   NCard, NForm, NFormItem, NInput, NSpace, NButton, NSelect, NInputNumber,
   NSwitch, NDivider, NAlert, NText, useMessage,
 } from "naive-ui";
-import { aiApi } from "../api";
+import { aiApi, resourceApi } from "../api";
+import type { GenericRecord } from "../api/types";
 import { useSettingsStore } from "../stores/settings";
 
 const route = useRoute();
@@ -15,6 +16,7 @@ const settings = useSettingsStore();
 const projectId = computed(() => route.params.projectId as string);
 const testing = ref(false);
 const testResult = ref<string | null>(null);
+const savedConfigId = ref<string | null>(null);
 
 const providerOptions = [
   { label: "OpenAI", value: "OpenAI" },
@@ -23,6 +25,51 @@ const providerOptions = [
   { label: "通义千问", value: "Qwen" },
   { label: "自定义", value: "custom" },
 ];
+
+onMounted(() => loadModelConfig());
+
+function applyModelConfig(record: GenericRecord) {
+  const payload = record.payload || {};
+  settings.modelProvider = payload.provider || record.category || "OpenAI";
+  settings.modelApiKey = payload.api_key || "";
+  settings.modelBaseUrl = payload.base_url || "https://api.openai.com/v1";
+  settings.modelName = payload.model_name || record.title || "";
+  savedConfigId.value = record.id;
+}
+
+async function loadModelConfig() {
+  try {
+    const configs = await resourceApi.list(projectId.value, "model-configs");
+    const defaultConfig = configs.find((config) => config.payload?.is_default) || configs[0];
+    if (defaultConfig) applyModelConfig(defaultConfig);
+  } catch (e: any) {
+    message.error(`加载模型配置失败: ${e.message}`);
+  }
+}
+
+async function saveModelConfig() {
+  const payload = {
+    provider: settings.modelProvider,
+    api_key: settings.modelApiKey,
+    base_url: settings.modelBaseUrl,
+    model_name: settings.modelName,
+    temperature: 0.7,
+    max_tokens: 4096,
+    is_default: true,
+  };
+  const data = {
+    title: settings.modelName || settings.modelProvider || "默认模型",
+    category: settings.modelProvider,
+    content: "default",
+    payload,
+    status: "active",
+  };
+
+  const saved = savedConfigId.value
+    ? await resourceApi.update(projectId.value, "model-configs", savedConfigId.value, data)
+    : await resourceApi.create(projectId.value, "model-configs", data);
+  savedConfigId.value = saved.id;
+}
 
 async function handleTest() {
   testing.value = true;
@@ -37,8 +84,9 @@ async function handleTest() {
       max_tokens: 16,
     });
     if (result.ok || result.status === "ok") {
-      testResult.value = "✅ 连接成功";
-      message.success("模型连接正常");
+      await saveModelConfig();
+      testResult.value = "✅ 连接成功，已保存为默认模型";
+      message.success("模型连接正常，已保存");
     } else {
       testResult.value = `❌ ${result.error || result.message || "连接失败"}`;
       message.error("连接失败");
@@ -86,7 +134,7 @@ async function handleTest() {
         </NFormItem>
       </NForm>
       <NSpace justify="end">
-        <NButton :loading="testing" @click="handleTest">测试连接</NButton>
+        <NButton :loading="testing" @click="handleTest">测试并保存</NButton>
       </NSpace>
       <NAlert
         v-if="testResult"

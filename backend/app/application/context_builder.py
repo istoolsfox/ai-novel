@@ -237,6 +237,7 @@ def compact_generation_context(context: dict[str, Any]) -> dict[str, Any]:
         ],
         "emotion_seed": compact_seed,
         "prev_chapter_bridge": compact_bridge,
+        "generation_contract": compact_value(context.get("generation_contract") or {}, 500, 8),
     }
 
 

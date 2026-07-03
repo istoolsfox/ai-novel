@@ -1051,3 +1051,514 @@ def test_generation_context_lazily_rebuilds_missing_volume_memory(monkeypatch, t
     assert response.status_code == 200
     assert volume.status_code == 200
     assert "主角发现无题古籍" in response.json()["context"]["volume_memory"]["content"]
+
+
+def test_generation_job_params_normalize_generation_modes(monkeypatch, tmp_path):
+    make_client(monkeypatch, tmp_path)
+
+    from backend.app.application.job_service import normalize_job_params
+
+    fast = normalize_job_params({"generation_mode": "fast"})
+    standard = normalize_job_params({})
+    deep = normalize_job_params({"generation_mode": "deep"})
+    merged = normalize_job_params({"generation_mode": "deep", "skip_steps": ["anti_ai"]})
+    unknown = normalize_job_params({"generation_mode": "experimental"})
+
+    assert fast["generation_mode"] == "fast"
+    assert fast["skip_steps"] == ["anti_ai", "dialogue", "reader_pull"]
+    assert standard["generation_mode"] == "standard"
+    assert standard["skip_steps"] == ["anti_ai", "dialogue", "reader_pull"]
+    assert deep["generation_mode"] == "deep"
+    assert deep["skip_steps"] == []
+    assert merged["skip_steps"] == ["anti_ai"]
+    assert unknown["generation_mode"] == "standard"
+
+
+def test_orchestrator_resume_detects_completed_required_steps_by_step_status(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"title": "断点恢复"}).json()
+
+    from backend.app.engine.orchestrator import Orchestrator
+    from backend.app.infrastructure.database import create_job, create_step, update_step
+
+    job = create_job(
+        project["id"],
+        {
+            "start_chapter_number": 1,
+            "target_chapter_count": 1,
+            "checkpoint_strategy": "none",
+            "auto_finalize": 1,
+            "params": {},
+        },
+    )
+    required_steps = ["brief", "seed", "draft", "archaeology", "deepen", "finalize"]
+    for step_name in required_steps:
+        step = create_step(job["id"], project["id"], "chapter-1", 1, step_name)
+        update_step(step["id"], "completed", {"ok": True})
+
+    assert Orchestrator(job["id"])._is_chapter_complete(1) is True
+
+    incomplete_job = create_job(
+        project["id"],
+        {
+            "start_chapter_number": 2,
+            "target_chapter_count": 1,
+            "checkpoint_strategy": "none",
+            "auto_finalize": 1,
+            "params": {},
+        },
+    )
+    step = create_step(incomplete_job["id"], project["id"], "chapter-2", 2, "brief")
+    update_step(step["id"], "completed", {"ok": True})
+
+    assert Orchestrator(incomplete_job["id"])._is_chapter_complete(2) is False
+
+
+def test_orchestrator_target_words_prefers_blueprint_then_project(monkeypatch, tmp_path):
+    make_client(monkeypatch, tmp_path)
+
+    from backend.app.engine.orchestrator import _target_words_for_job
+
+    assert _target_words_for_job(
+        {"generation_params": {"words_per_chapter": 1200}},
+        {"target_words_per_chapter": 800},
+    ) == 1200
+    assert _target_words_for_job(
+        {"generation_params": {}},
+        {"target_words_per_chapter": 800},
+    ) == 800
+    assert _target_words_for_job(
+        {"generation_params": {"words_per_chapter": "bad"}},
+        {"target_words_per_chapter": 0},
+    ) == 3000
+
+
+def test_checkpoint_word_count_tolerance_defaults_to_autonomous_friendly_range():
+    from backend.app.engine.checkpoint import CheckpointManager
+
+    manager = CheckpointManager()
+    assert manager._check_word_count({"target_words": 800, "draft": "字" * 1116}) == ""
+    assert manager._check_word_count({"target_words": 800, "draft": "字" * 1400, "word_count_tolerance": 0.2})
+
+
+def test_generation_job_uses_saved_remote_model_config_instead_of_stub(monkeypatch, tmp_path):
+    import time
+
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post(
+        "/api/projects",
+        json={
+            "title": "远程模型托管",
+            "target_chapter_count": 1,
+            "target_words_per_chapter": 120,
+            "global_summary": "生成一章真正正文，不要使用本地占位。",
+        },
+    ).json()
+    create_story_prerequisites(client, project["id"], 1, "第一章 雨夜名单")
+    blueprint = client.post(
+        f"/api/projects/{project['id']}/blueprints",
+        json={
+            "volume_number": 1,
+            "volume_title": "第一卷",
+            "volume_arc": "完成一次短闭环。",
+            "chapter_range": {"start": 1, "end": 1},
+            "generation_params": {"word_count_tolerance": 1.0},
+        },
+    ).json()
+    client.post(f"/api/projects/{project['id']}/blueprints/{blueprint['id']}/approve")
+    client.post(
+        f"/api/projects/{project['id']}/model-configs",
+        json={
+            "title": "writer-model",
+            "category": "OpenAI",
+            "content": "default",
+            "payload": {
+                "api_key": "test-key",
+                "base_url": "https://example.test/v1",
+                "model_name": "writer-model",
+                "is_default": True,
+            },
+        },
+    )
+
+    import backend.app.main as main
+
+    calls: list[str] = []
+
+    class FakeResponse:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": self.text}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout=0):
+        body = json.loads(request.data.decode("utf-8"))
+        content = body["messages"][1]["content"]
+        workflow = content.split("工作流：", 1)[1].split("\n", 1)[0]
+        calls.append(workflow)
+        if workflow == "generate_chapter_brief":
+            return FakeResponse(json.dumps({
+                "chapter_title": "第一章 雨夜名单",
+                "chapter_goal": "顾栖月发现失踪名单，并决定进入灰塔。",
+                "main_conflict": "她必须在遗忘扩散前确认名单来源。",
+            }, ensure_ascii=False))
+        if workflow == "generate_emotion_seed":
+            return FakeResponse(json.dumps({
+                "emotion_seed": {
+                    "core_tension": "想保存痛苦记忆，却害怕被痛苦吞没",
+                    "scene_temperature": "雨夜、冷光、潮湿纸页",
+                    "open_question": "名单为什么只剩她还记得？",
+                }
+            }, ensure_ascii=False))
+        if workflow == "generate_chapter_draft":
+            assert '"is_final_chapter": true' in content
+            assert "不得写成未完待续" in content
+            return FakeResponse(
+                "远程正文标记：雨夜的名单贴在档案柜内侧，顾栖月读到自己的名字时没有立刻后退。"
+                "她先把柜门合上一半，听见走廊尽头的脚步声从近处擦过去，像有人拖着一把没有影子的伞。"
+                "钟楼在雾里敲了一声，街上的人同时忘记了刚才的雨，只有窗玻璃还保留着水痕。"
+                "名单最后一栏写着灰塔归档，归档日期却是明天。顾栖月把纸页折进掌心，纸边割破了她的指腹，"
+                "那一点疼反而让她安静下来。她没有再等巡夜人离开，而是取下钥匙，关灯，走向灰塔。"
+                "如果整座城只剩她还记得这些名字，她就不能把记得也交出去。"
+            )
+        if workflow == "emotion_archaeology":
+            return FakeResponse(json.dumps({
+                "reader_felt_map": {"rupture_points": []},
+                "subconscious_leads": [],
+                "motif_echoes": {"existing_motifs": [], "new_seeds": []},
+            }, ensure_ascii=False))
+        if workflow == "deepen_and_bury":
+            return FakeResponse(json.dumps({
+                "revised_text": (
+                    "远程正文标记：雨夜的名单贴在档案柜内侧，顾栖月读到自己的名字时没有后退。"
+                    "她把柜门合上一半，听见巡夜人的脚步从门外擦过去，皮鞋踩过积水，却没有留下声音。"
+                    "钟楼在雾里敲了一声，街上的人同时忘记了刚才的雨，只有窗玻璃还保留着密密的水痕。"
+                    "名单最后一栏写着灰塔归档，日期却是明天。她把纸页折进掌心，纸边割破指腹，"
+                    "疼痛让她终于确认自己还在这里。她取下钥匙，关灯，走向灰塔。"
+                    "如果整座城只剩她还记得这些名字，她就不能把记得也交出去。"
+                    "门在身后合上时，雨声忽然变小，像有人终于承认这份名单不是梦。"
+                )
+            }, ensure_ascii=False))
+        if workflow == "summarize_and_bridge":
+            return FakeResponse(json.dumps({
+                "summary": "顾栖月发现失踪名单并决定去灰塔。",
+                "ending_state": {
+                    "time": "雨夜",
+                    "location": "档案室门口",
+                    "characters_present": "顾栖月",
+                    "situation": "她握着名单准备出发",
+                    "last_action": "她把名单折进掌心",
+                },
+                "open_hooks": [{"hook": "灰塔为何保存失踪名单", "urgency": "高"}],
+                "emotional_residue": [{"character": "顾栖月", "emotion": "克制的恐惧", "intensity": 7}],
+            }, ensure_ascii=False))
+        return FakeResponse("{}")
+
+    monkeypatch.setattr(main.urllib.request, "urlopen", fake_urlopen)
+
+    job = client.post(
+        f"/api/projects/{project['id']}/jobs",
+        json={
+            "blueprint_id": blueprint["id"],
+            "start_chapter": 1,
+            "count": 1,
+            "checkpoint_strategy": "none",
+            "auto_finalize": True,
+            "params": {"generation_mode": "fast"},
+        },
+    ).json()
+    for _ in range(80):
+        current = client.get(f"/api/projects/{project['id']}/jobs/{job['id']}").json()
+        if current["status"] in {"completed", "failed", "checkpoint", "aborted"}:
+            break
+        time.sleep(0.05)
+
+    assert current["status"] == "completed"
+    chapters = client.get(f"/api/projects/{project['id']}/chapters").json()
+    assert len(chapters) == 1
+    assert "远程正文标记" in chapters[0]["draft"]
+    assert "（stub）" not in chapters[0]["draft"]
+    assert calls.count("generate_emotion_seed") == 1
+
+    from backend.app.infrastructure.database import connect, rows_to_dicts
+
+    with connect() as conn:
+        step_rows = rows_to_dicts(
+            conn.execute(
+                "SELECT step_name, step_output FROM chapter_generation_steps WHERE job_id = ?",
+                (job["id"],),
+            ).fetchall()
+        )
+    outputs = [json.loads(row["step_output"]) for row in step_rows if row.get("step_output")]
+    assert outputs
+    assert all(output.get("model") == "writer-model" for output in outputs)
+
+
+def test_chapter_prose_quality_gate_rejects_outline_like_text():
+    from backend.app.engine.quality import validate_chapter_prose
+
+    outline_like = """
+    本章目标：主角发现失踪名单。
+    主要冲突：她必须进入灰塔。
+    关键事件：
+    1. 找到名单
+    2. 与守夜人争执
+    3. 结尾留下钩子
+    写作建议：多描写雨夜氛围。
+    """
+    prose = (
+        "雨声贴着灰塔外墙往上爬。顾栖月把名单摊在灯下，看见自己的名字夹在一串陌生人之间。"
+        "她没有立刻喊人，只把纸角压平，像这样就能把心里的褶皱也压下去。门外有人停了一下，"
+        "脚步声又慢慢远了。她知道再等下去，名单上的人会一个一个从城市里消失，而她会成为最后一个还记得的人。"
+        "钟楼在雾里轻轻震了一下，没有钟声，只有玻璃柜里的旧钥匙跟着响。她伸手去拿钥匙，"
+        "指尖碰到金属时才发现自己一直在发抖。不是害怕名单，而是害怕名单是真的。"
+        "如果它是真的，那么她过去三个月修复的每一份档案，都可能只是替别人擦掉最后的痕迹。"
+    )
+
+    assert not validate_chapter_prose(outline_like).ok
+    assert validate_chapter_prose(prose).ok
+
+
+def test_generation_job_fails_instead_of_persisting_outline_like_draft(monkeypatch, tmp_path):
+    import time
+
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post(
+        "/api/projects",
+        json={"title": "坏正文拦截", "target_chapter_count": 1, "target_words_per_chapter": 500},
+    ).json()
+    create_story_prerequisites(client, project["id"], 1, "第一章 坏输出")
+    blueprint = client.post(
+        f"/api/projects/{project['id']}/blueprints",
+        json={
+            "volume_number": 1,
+            "volume_title": "第一卷",
+            "volume_arc": "测试质量门禁。",
+            "chapter_range": {"start": 1, "end": 1},
+            "generation_params": {"word_count_tolerance": 1.0},
+        },
+    ).json()
+    client.post(f"/api/projects/{project['id']}/blueprints/{blueprint['id']}/approve")
+    client.post(
+        f"/api/projects/{project['id']}/model-configs",
+        json={
+            "title": "writer-model",
+            "category": "OpenAI",
+            "content": "default",
+            "payload": {
+                "api_key": "test-key",
+                "base_url": "https://example.test/v1",
+                "model_name": "writer-model",
+                "is_default": True,
+            },
+        },
+    )
+
+    import backend.app.main as main
+
+    class FakeResponse:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": self.text}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout=0):
+        body = json.loads(request.data.decode("utf-8"))
+        content = body["messages"][1]["content"]
+        workflow = content.split("工作流：", 1)[1].split("\n", 1)[0]
+        if workflow == "generate_chapter_brief":
+            return FakeResponse(json.dumps({"chapter_title": "第一章 坏输出", "chapter_goal": "测试"}, ensure_ascii=False))
+        if workflow == "generate_emotion_seed":
+            return FakeResponse(json.dumps({"emotion_seed": {"core_tension": "测试", "scene_temperature": "冷雨", "open_question": "会失败吗？"}}, ensure_ascii=False))
+        if workflow == "generate_chapter_draft":
+            return FakeResponse(
+                "本章目标：主角发现线索。\n主要冲突：她必须选择。\n关键事件：\n1. 找到线索\n2. 进入灰塔\n3. 留下钩子\n写作建议：增强氛围。"
+            )
+        return FakeResponse("{}")
+
+    monkeypatch.setattr(main.urllib.request, "urlopen", fake_urlopen)
+
+    job = client.post(
+        f"/api/projects/{project['id']}/jobs",
+        json={
+            "blueprint_id": blueprint["id"],
+            "start_chapter": 1,
+            "count": 1,
+            "checkpoint_strategy": "none",
+            "auto_finalize": True,
+            "params": {"generation_mode": "fast"},
+        },
+    ).json()
+    for _ in range(80):
+        current = client.get(f"/api/projects/{project['id']}/jobs/{job['id']}").json()
+        if current["status"] in {"completed", "failed", "checkpoint", "aborted"}:
+            break
+        time.sleep(0.05)
+
+    assert current["status"] == "failed"
+    assert "正文质量检查失败" in current["error_message"]
+    chapters = client.get(f"/api/projects/{project['id']}/chapters").json()
+    assert len(chapters) == 1
+    assert chapters[0]["draft"] == ""
+
+
+def test_local_final_chapter_draft_closes_instead_of_adding_next_hook():
+    from backend.app.domain.models import AiWorkflowIn
+    from backend.app.workflows.generation import build_local_chapter_draft
+
+    draft = build_local_chapter_draft(
+        AiWorkflowIn(prompt="终章"),
+        {
+            "chapter": {"chapter_number": 15, "title": "第 15 章 明天之后", "brief": "终止记忆停摆"},
+            "generation_contract": {"is_final_chapter": True, "ending_required": True},
+        },
+    )
+
+    assert "故事到这里停住" in draft
+    assert "她在等——等的不是天亮" not in draft
+    assert "继续活下去" in draft
+
+
+def test_pure_hosted_generation_can_finish_15_chapters_and_export_closed_story(monkeypatch, tmp_path):
+    import time
+
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post(
+        "/api/projects",
+        json={
+            "title": "十五章闭环烟测",
+            "topic": "记忆停摆的城市",
+            "genre": "都市奇幻悬疑",
+            "target_chapter_count": 15,
+            "target_words_per_chapter": 800,
+            "synopsis": "顾栖月追查失忆名单，最终终止记忆停摆。",
+            "global_summary": "第15章必须收束主要冲突，不得未完待续。",
+        },
+    ).json()
+    client.post(
+        f"/api/projects/{project['id']}/character-profiles",
+        json={"title": "顾栖月", "category": "主角", "content": "档案修复员，必须保存痛苦记忆。", "payload": {"name": "顾栖月"}},
+    )
+    for chapter_number in range(1, 16):
+        client.post(
+            f"/api/projects/{project['id']}/outlines",
+            json={
+                "title": f"第 {chapter_number} 章大纲",
+                "category": "chapter_outline",
+                "content": f"第 {chapter_number} 章推进记忆停摆调查。",
+                "payload": {
+                    "chapter_number": str(chapter_number),
+                    "chapter_title": f"第 {chapter_number} 章",
+                    "chapter_goal": "终章收束主要冲突" if chapter_number == 15 else f"推进第 {chapter_number} 阶段线索",
+                },
+            },
+        )
+    blueprint = client.post(
+        f"/api/projects/{project['id']}/blueprints",
+        json={
+            "volume_number": 1,
+            "volume_title": "记忆停摆",
+            "volume_arc": "从发现失踪名单，到终止城市记忆停摆。",
+            "chapter_range": {"start": 1, "end": 15},
+            "recurring_motifs": ["雨声", "停摆钟针", "白页"],
+            "taboo_list": ["不要挑起现实政治立场对立", "不要写成未完待续"],
+            "generation_params": {"ending_required": True, "word_count_tolerance": 1.0},
+        },
+    ).json()
+    client.post(f"/api/projects/{project['id']}/blueprints/{blueprint['id']}/approve")
+
+    job = client.post(
+        f"/api/projects/{project['id']}/jobs",
+        json={
+            "blueprint_id": blueprint["id"],
+            "start_chapter": 1,
+            "count": 15,
+            "checkpoint_strategy": "none",
+            "auto_finalize": True,
+            "params": {"hosting_mode": "pure", "generation_mode": "fast"},
+        },
+    ).json()
+    for _ in range(300):
+        current = client.get(f"/api/projects/{project['id']}/jobs/{job['id']}").json()
+        if current["status"] in {"completed", "failed", "checkpoint", "aborted"}:
+            break
+        time.sleep(0.05)
+
+    assert current["status"] == "completed"
+    chapters = client.get(f"/api/projects/{project['id']}/chapters").json()
+    assert len(chapters) == 15
+    assert {chapter["status"] for chapter in chapters} == {"final"}
+    assert all(chapter["word_count"] > 300 for chapter in chapters)
+    final_draft = chapters[-1]["draft"]
+    assert "故事到这里停住" in final_draft
+    assert "她在等——等的不是天亮" not in final_draft
+
+    exported = client.get(f"/api/projects/{project['id']}/export/markdown")
+    assert exported.status_code == 200
+    markdown = exported.text
+    assert markdown.startswith("# 十五章闭环烟测")
+    assert markdown.count("## 第 ") == 15
+    assert "## 第 15 章" in markdown
+    assert "故事到这里停住" in markdown
+    assert "第 15 章 · 第 15 章" not in markdown
+
+    volume = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "关键记忆.md"})
+    assert volume.status_code == 200
+    memory = volume.json()["content"]
+    assert "## 第 15 章" in memory
+    assert len(memory) < len(markdown)
+    assert "故事到这里停住" not in memory
+
+
+def test_autopilot_prepares_bare_project_and_starts_hosted_generation(monkeypatch, tmp_path):
+    import time
+
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post(
+        "/api/projects",
+        json={
+            "title": "一键托管烟测",
+            "topic": "记忆停摆的城市",
+            "target_chapter_count": 3,
+            "target_words_per_chapter": 600,
+            "synopsis": "顾栖月追查失踪名单并在终章终止停摆。",
+        },
+    ).json()
+
+    response = client.post(
+        f"/api/projects/{project['id']}/jobs/autopilot",
+        json={"count": 3, "generation_mode": "fast"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    job = payload["job"]
+    assert payload["prepared"]["characters"] >= 1
+    assert payload["prepared"]["outlines"] >= 3
+    assert payload["prepared"]["taboo_rules"] >= 2
+    assert payload["blueprint"]["status"] == "active"
+
+    for _ in range(120):
+        current = client.get(f"/api/projects/{project['id']}/jobs/{job['id']}").json()
+        if current["status"] in {"completed", "failed", "checkpoint", "aborted"}:
+            break
+        time.sleep(0.05)
+
+    assert current["status"] == "completed"
+    chapters = client.get(f"/api/projects/{project['id']}/chapters").json()
+    assert len(chapters) == 3
+    assert {chapter["status"] for chapter in chapters} == {"final"}
+    assert "故事到这里停住" in chapters[-1]["draft"]

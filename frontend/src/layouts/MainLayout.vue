@@ -2,16 +2,8 @@
 import { h, computed, ref, watch } from "vue";
 import { useRoute, useRouter, RouterView } from "vue-router";
 import {
-  NLayout,
-  NLayoutSider,
-  NLayoutHeader,
-  NLayoutContent,
-  NMenu,
-  NButton,
-  NSpace,
-  NText,
-  NIcon,
-  type MenuOption,
+  NLayout, NLayoutSider, NLayoutHeader, NLayoutContent, NMenu,
+  NButton, NSpace, NText, type MenuOption,
 } from "naive-ui";
 import { useProjectStore } from "../stores/project";
 import { useSettingsStore } from "../stores/settings";
@@ -24,55 +16,36 @@ const settings = useSettingsStore();
 const collapsed = ref(false);
 const projectId = computed(() => route.params.projectId as string);
 
-// 加载项目信息
-watch(
-  projectId,
-  (id) => {
-    if (id) projectStore.fetchProject(id);
-  },
-  { immediate: true },
-);
+watch(projectId, (id) => {
+  if (id) projectStore.fetchProject(id);
+}, { immediate: true });
 
 const menuOptions = computed<MenuOption[]>(() => [
-  {
-    label: "概览",
-    key: "Dashboard",
-    icon: () => h("span", { class: "menu-emoji" }, "📊"),
-  },
-  {
-    label: "卷蓝图",
-    key: "Blueprints",
-    icon: () => h("span", { class: "menu-emoji" }, "🗺️"),
-  },
-  {
-    label: "托管生成",
-    key: "Generate",
-    icon: () => h("span", { class: "menu-emoji" }, "🚀"),
-  },
-  {
-    label: "章节编辑",
-    key: "Chapters",
-    icon: () => h("span", { class: "menu-emoji" }, "📖"),
-  },
-  {
-    label: "情感工作台",
-    key: "Emotion",
-    icon: () => h("span", { class: "menu-emoji" }, "🎭"),
-  },
-  {
-    label: "设置",
-    key: "Settings",
-    icon: () => h("span", { class: "menu-emoji" }, "⚙️"),
-  },
+  { label: "概览", key: "Dashboard", icon: () => h("span", { class: "menu-emoji" }, "📊") },
+  { label: "卷蓝图", key: "Blueprints", icon: () => h("span", { class: "menu-emoji" }, "🗺️") },
+  { label: "托管生成", key: "Generate", icon: () => h("span", { class: "menu-emoji" }, "🚀") },
+  { label: "章节编辑器", key: "Chapters", icon: () => h("span", { class: "menu-emoji" }, "✍️") },
+  { label: "情感工作台", key: "Emotion", icon: () => h("span", { class: "menu-emoji" }, "🎭") },
+  { type: "divider", key: "d1" },
+  { label: "大纲", key: "Outline", icon: () => h("span", { class: "menu-emoji" }, "📚") },
+  { label: "故事圣经", key: "Characters", icon: () => h("span", { class: "menu-emoji" }, "📖") },
+  { label: "角色关系图", key: "Graph", icon: () => h("span", { class: "menu-emoji" }, "🕸️") },
+  { label: "时间线", key: "Timeline", icon: () => h("span", { class: "menu-emoji" }, "⏳") },
+  { label: "伏笔管理", key: "Foreshadowing", icon: () => h("span", { class: "menu-emoji" }, "✨") },
+  { type: "divider", key: "d2" },
+  { label: "风格学习", key: "Style", icon: () => h("span", { class: "menu-emoji" }, "⭐") },
+  { label: "雷点控制", key: "Taboo", icon: () => h("span", { class: "menu-emoji" }, "⚠️") },
+  { label: "知识库", key: "Knowledge", icon: () => h("span", { class: "menu-emoji" }, "📚") },
+  { label: "llmwiki 记忆", key: "Wiki", icon: () => h("span", { class: "menu-emoji" }, "🧠") },
+  { label: "导出", key: "Export", icon: () => h("span", { class: "menu-emoji" }, "📥") },
+  { type: "divider", key: "d3" },
+  { label: "设置", key: "Settings", icon: () => h("span", { class: "menu-emoji" }, "⚙️") },
 ]);
 
 const activeKey = computed(() => route.name as string);
 
 function handleMenuUpdate(key: string) {
-  router.push({
-    name: key,
-    params: { projectId: projectId.value },
-  });
+  router.push({ name: key, params: { projectId: projectId.value } });
 }
 
 function goBack() {
@@ -102,14 +75,16 @@ const projectTitle = computed(() => projectStore.currentProject?.title || "加�
         <NText depth="3" style="font-size: 12px">当前项目</NText>
         <NText strong :title="projectTitle">{{ projectTitle }}</NText>
       </div>
-      <NMenu
-        :options="menuOptions"
-        :value="activeKey"
-        :collapsed="collapsed"
-        :collapsed-width="64"
-        :collapsed-icon-size="22"
-        @update:value="handleMenuUpdate"
-      />
+      <NScrollbar style="max-height: calc(100vh - 120px)">
+        <NMenu
+          :options="menuOptions"
+          :value="activeKey"
+          :collapsed="collapsed"
+          :collapsed-width="64"
+          :collapsed-icon-size="22"
+          @update:value="handleMenuUpdate"
+        />
+      </NScrollbar>
     </NLayoutSider>
 
     <NLayout>
@@ -123,14 +98,16 @@ const projectTitle = computed(() => projectStore.currentProject?.title || "加�
           {{ settings.themeLabel }}
         </NButton>
       </NLayoutHeader>
-      <NLayoutContent
-        style="padding: 20px; height: calc(100vh - 52px); overflow-y: auto;"
-      >
+      <NLayoutContent style="padding: 20px; height: calc(100vh - 52px); overflow-y: auto;">
         <RouterView />
       </NLayoutContent>
     </NLayout>
   </NLayout>
 </template>
+
+<script lang="ts">
+import { NScrollbar } from "naive-ui";
+</script>
 
 <style scoped>
 .sidebar-logo {

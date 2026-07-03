@@ -141,6 +141,8 @@ def structured_output_for_workflow(workflow: str, payload: AiWorkflowIn, context
         title = clean_chapter_title(chapter)
         focus = title or payload.prompt or "记忆古籍"
         protagonist = primary_character_name(context)
+        generation_contract = context.get("generation_contract") if isinstance(context.get("generation_contract"), dict) else {}
+        is_final_chapter = bool(generation_contract.get("is_final_chapter") or generation_contract.get("ending_required"))
 
         # 解析上一章衔接包
         prev_bridge = context.get("prev_chapter_bridge") or {}
@@ -182,11 +184,19 @@ def structured_output_for_workflow(workflow: str, payload: AiWorkflowIn, context
                 f"{protagonist}在{focus}中取得本章独有线索；"
                 f"线索触发与第 {chapter_number or '?'} 章阶段目标相关的新阻碍；"
                 "角色做出会改变后续关系的选择；"
-                f"结尾把{focus}的后果留到下一章继续偿还。"
+                + (
+                    f"结尾回收{focus}的主要后果，给出明确收束。"
+                    if is_final_chapter
+                    else f"结尾把{focus}的后果留到下一章继续偿还。"
+                )
             ),
             "emotional_rhythm": f"以承接上一章余波开场（{bridge_json.get('unresolved_tension', '压抑') if bridge_json else '不安'}），中段升高外部压力，结尾留下具体代价。",
             "foreshadowing": f"{focus}背后的代价尚未完全揭示，但已经影响后续走向",
-            "hook": f"{protagonist}发现{focus}留下的痕迹指向一个更早被抹去的决定。",
+            "hook": (
+                f"{protagonist}确认{focus}的核心代价，并让本卷主要冲突落地。"
+                if is_final_chapter
+                else f"{protagonist}发现{focus}留下的痕迹指向一个更早被抹去的决定。"
+            ),
             "related_characters": protagonist,
             "completion_status": "草稿",
         }
@@ -373,7 +383,7 @@ def structured_output_for_workflow(workflow: str, payload: AiWorkflowIn, context
         # v4 升级：融合三份产出的加深
         content = payload.content or ""
         if not content:
-            content = "（stub）加深后的正文"
+            content = "雨声落在档案柜上，主角把纸页压平，终于看清名单背后被刮掉的旧签名。"
         # 模拟做减法：删掉一些解释性词语
         revised = content
         for phrase in ["她心中一阵酸楚", "不禁", "缓缓", "涌上心头", "一丝"]:
@@ -430,36 +440,57 @@ def structured_output_for_workflow(workflow: str, payload: AiWorkflowIn, context
     if workflow == "trace_image_growth":
         return {
             "tracked_images": [
-                {"image": "（stub）雨声", "is_new": True, "chapter_number": 1, "context": "（stub）", "felt_meaning_hint": ""}
+                {"image": "雨声", "is_new": True, "chapter_number": 1, "context": "档案室外的雨声反复出现", "felt_meaning_hint": ""}
             ]
         }
     if workflow == "retrospect_deepen":
         return {
-            "revised_text": "（stub）回溯加深后的正文",
-            "changes": [{"position": "（stub）", "before": "（原文）", "after": "（修改后）", "reason": "回溯加深"}],
+            "revised_text": "她回头重读那一页，才明白自己早已在第一场雨里错过答案。",
+            "changes": [{"position": "第2段", "before": "原句过于直白", "after": "改为动作和物象承载情绪", "reason": "回溯加深"}],
             "lead_id": payload.payload.get("lead_id", ""),
         }
     if workflow == "generate_chapter_bridge":
         chapter = context.get("chapter") or {}
+        generation_contract = context.get("generation_contract") if isinstance(context.get("generation_contract"), dict) else {}
+        if generation_contract.get("is_final_chapter") or generation_contract.get("ending_required"):
+            return {
+                "ending_state": {
+                    "time": "终章夜明",
+                    "location": "灰塔出口",
+                    "characters_present": "主角、见证者",
+                    "situation": "核心冲突已结算，角色带着代价离开",
+                    "last_action": "主角合上档案，把名字留在纸上",
+                },
+                "open_hooks": [],
+                "emotional_residue": [
+                    {"character": "主角", "emotion": "疲惫但清醒", "intensity": 5, "physical": "掌心仍有纸页压痕"},
+                ],
+                "info_revealed": ["停摆的根源已经确认"],
+                "info_withheld": [],
+                "next_chapter_seeds": [],
+                "unresolved_tension": "",
+                "_chapter_id": chapter.get("id", ""),
+                "_chapter_number": chapter.get("chapter_number", 0),
+            }
         return {
             "ending_state": {
-                "time": "（stub）深夜",
-                "location": "（stub）档案层入口",
+                "time": "深夜",
+                "location": "档案层入口",
                 "characters_present": "主角、守夜人",
-                "situation": "（stub）主角刚发现关键线索，守夜人在门外",
-                "last_action": "（stub）她把抽屉推回去，没有关上",
+                "situation": "主角刚发现关键线索，守夜人在门外",
+                "last_action": "她把抽屉推回去，没有关上",
             },
             "open_hooks": [
-                {"hook": "（stub）签名被篡改的真相", "urgency": "高"},
-                {"hook": "（stub）守夜人的真实身份", "urgency": "中"},
+                {"hook": "签名被篡改的真相", "urgency": "高"},
+                {"hook": "守夜人的真实身份", "urgency": "中"},
             ],
             "emotional_residue": [
                 {"character": "主角", "emotion": "压抑的愤怒", "intensity": 7, "physical": "手指发麻"},
             ],
-            "info_revealed": ["（stub）签名与原件不符"],
-            "info_withheld": ["（stub）谁篡改了签名"],
-            "next_chapter_seeds": ["（stub）主角离开时会遇到谁"],
-            "unresolved_tension": "（stub）她需要盟友但不敢信任任何人",
+            "info_revealed": ["签名与原件不符"],
+            "info_withheld": ["谁篡改了签名"],
+            "next_chapter_seeds": ["主角离开时会遇到关键见证者"],
+            "unresolved_tension": "她需要盟友但不敢信任任何人",
             "_chapter_id": chapter.get("id", ""),
             "_chapter_number": chapter.get("chapter_number", 0),
         }
@@ -584,6 +615,8 @@ def outline_focus_for_chapter(context: dict[str, Any], chapter_number: int, titl
 def build_local_chapter_draft(payload: AiWorkflowIn, context: dict[str, Any]) -> str:
     """本地 stub 正文生成。根据衔接包和情感种子动态生成，不再硬编码。"""
     chapter = context.get("chapter") if isinstance(context.get("chapter"), dict) else {}
+    generation_contract = context.get("generation_contract") if isinstance(context.get("generation_contract"), dict) else {}
+    is_final_chapter = bool(generation_contract.get("is_final_chapter") or generation_contract.get("ending_required"))
     chapter_number = int(chapter.get("chapter_number") or 1)
     title = clean_chapter_title(chapter)
     protagonist = primary_character_name(context)
@@ -704,13 +737,23 @@ def build_local_chapter_draft(payload: AiWorkflowIn, context: dict[str, Any]) ->
         f"她知道它还会弹起来，但不是现在。"
     )
 
-    # 钩子结尾
+    # 钩子结尾 / 终章收束
     temp_word = scene_temperature.split("，")[0] if "，" in scene_temperature else scene_temperature
-    hook_ending = (
-        f"章末，{protagonist}手里多了一样不该有的东西。她不知道该藏起来还是该交出去，"
-        f"但她知道很快就会有人来找她要。她把那东西握紧，指节发白。"
-        f"窗外的{temp_word}还没停。她在等——等的不是天亮，是一个她还没想清楚的决定。"
-    )
+    if is_final_chapter:
+        hook_ending = (
+            f"章末，{protagonist}没有再等谁来替她确认答案。她把那样不该有的东西放回档案里，"
+            f"也把自己的名字留在同一页上。这样做不会让失去变得轻一点，却让失去终于有了位置。"
+            f"窗外的{temp_word}慢慢停了。灰塔的钟针重新向前挪动一格，声音很轻，"
+            f"轻得像有人在远处合上一本书。她站了很久，直到街灯一盏一盏亮起来，"
+            f"才转身离开。那些被保存下来的痛苦没有消失，但也不再追着她跑。"
+            f"故事到这里停住，不是因为所有问题都变得容易，而是因为她终于能带着答案继续活下去。"
+        )
+    else:
+        hook_ending = (
+            f"章末，{protagonist}手里多了一样不该有的东西。她不知道该藏起来还是该交出去，"
+            f"但她知道很快就会有人来找她要。她把那东西握紧，指节发白。"
+            f"窗外的{temp_word}还没停。她在等——等的不是天亮，是一个她还没想清楚的决定。"
+        )
 
     return "\n\n".join([
         f"第 {chapter_number} 章 · {title}",

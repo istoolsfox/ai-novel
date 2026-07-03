@@ -48,11 +48,11 @@ onUnmounted(() => {
 function getStepStatus(stepName: string): "done" | "active" | "pending" {
   const events = jobStore.sseEvents;
   const hasDone = events.some(
-    (e) => e.type === "step_done" && e.step_name === stepName,
+    (e) => e.type === "step" && e.step_name === stepName && ["completed", "skipped"].includes(e.status),
   );
   if (hasDone) return "done";
   const hasStart = events.some(
-    (e) => e.type === "step_start" && e.step_name === stepName,
+    (e) => e.type === "step" && e.step_name === stepName && e.status === "running",
   );
   if (hasStart) return "active";
   return "pending";
@@ -65,14 +65,16 @@ const logLines = computed(() =>
     .map((e) => {
       const time = new Date().toLocaleTimeString("zh-CN", { hour12: false });
       switch (e.type) {
-        case "chapter_start":
+        case "chapter_started":
           return `[${time}] 📖 开始生成第 ${e.chapter_number} 章`;
-        case "chapter_done":
+        case "chapter_completed":
           return `[${time}] ✅ 第 ${e.chapter_number} 章完成`;
-        case "step_start":
-          return `[${time}] 🔄 ${e.step_name} 开始`;
-        case "step_done":
-          return `[${time}] ✅ ${e.step_name} 完成 (${e.duration_ms}ms)`;
+        case "step":
+          if (e.status === "running") return `[${time}] 🔄 ${e.step_name} 开始`;
+          if (e.status === "completed") return `[${time}] ✅ ${e.step_name} 完成`;
+          if (e.status === "skipped") return `[${time}] ⏭️ ${e.step_name} 跳过`;
+          if (e.status === "failed") return `[${time}] ❌ ${e.step_name} 失败`;
+          return `[${time}] ${e.step_name}: ${e.status}`;
         case "checkpoint":
           return `[${time}] ⚠️ 检查点触发: ${e.reason}`;
         case "smart_stop":
@@ -99,7 +101,12 @@ const checkpointEvent = computed(() => {
 const progressPercentage = computed(() => {
   if (!jobStore.currentJob) return 0;
   const total = jobStore.currentJob.target_chapter_count;
-  const done = jobStore.currentJob.completed_chapter_count;
+  const doneFromEvents = new Set(
+    jobStore.sseEvents
+      .filter((event) => event.type === "chapter_completed")
+      .map((event) => event.chapter_number),
+  ).size;
+  const done = jobStore.currentJob.completed_chapter_count ?? doneFromEvents;
   return total > 0 ? Math.round((done / total) * 100) : 0;
 });
 

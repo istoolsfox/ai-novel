@@ -16,6 +16,35 @@ from ..infrastructure.database import (
 )
 from ..engine.orchestrator import start_job_thread, request_abort
 
+DEFAULT_SKIP_BY_MODE: dict[str, set[str]] = {
+    "fast": {"dialogue", "reader_pull", "anti_ai"},
+    "standard": {"dialogue", "reader_pull", "anti_ai"},
+    "deep": set(),
+}
+
+
+def normalize_job_params(params: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize generation params before persisting a job.
+
+    The UI can choose a coarse generation_mode while advanced callers may pass
+    skip_steps directly. Both are supported; explicit skip_steps are merged with
+    mode defaults so the orchestrator receives one simple contract.
+    """
+    normalized = dict(params or {})
+    mode = str(normalized.get("generation_mode") or normalized.get("hosting_mode") or "standard")
+    if mode not in DEFAULT_SKIP_BY_MODE:
+        mode = "standard"
+    explicit_skip = normalized.get("skip_steps") or []
+    if not isinstance(explicit_skip, list):
+        explicit_skip = []
+    skip_steps = sorted(DEFAULT_SKIP_BY_MODE[mode] | {str(step) for step in explicit_skip})
+    hosting_mode = str(normalized.get("hosting_mode") or "checkpoint")
+    if "smart_stop_policy" not in normalized:
+        normalized["smart_stop_policy"] = "warn" if hosting_mode == "pure" else "pause"
+    normalized["generation_mode"] = mode
+    normalized["skip_steps"] = skip_steps
+    return normalized
+
 
 def start_generation_job(
     project_id: str,
@@ -35,13 +64,15 @@ def start_generation_job(
             detail="project already has an active job. Complete or abort it first.",
         )
 
+    normalized_params = normalize_job_params(params)
+
     job = create_job(project_id, {
         "volume_blueprint_id": blueprint_id,
         "start_chapter_number": start_chapter,
         "target_chapter_count": target_count,
         "checkpoint_strategy": checkpoint_strategy,
         "auto_finalize": auto_finalize,
-        "params": params or {},
+        "params": normalized_params,
     })
 
     # Start background thread

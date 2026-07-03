@@ -104,6 +104,11 @@ export const blueprintApi = {
 export const jobApi = {
   start: (projectId: string, data: JobStartInput) =>
     api.post<GenerationJob>(`/api/projects/${projectId}/jobs`, data),
+  startAutopilot: (projectId: string, data: JobStartInput & { generation_mode?: string }) =>
+    api.post<{ job: GenerationJob; blueprint: Blueprint; prepared: Record<string, number> }>(
+      `/api/projects/${projectId}/jobs/autopilot`,
+      data,
+    ),
   list: (projectId: string) =>
     api.get<GenerationJob[]>(`/api/projects/${projectId}/jobs`),
   get: (projectId: string, jobId: string) =>

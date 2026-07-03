@@ -35,6 +35,7 @@ from ..infrastructure.database import (
 )
 from ..application.context_builder import build_generation_context
 from ..workflows.llm_client import run_model_or_stub
+from .quality import validate_chapter_prose
 
 # Steps that MUST run (cannot be skipped)
 REQUIRED_STEPS = {"brief", "seed", "draft", "archaeology", "deepen", "finalize"}
@@ -49,6 +50,9 @@ class ChapterContext:
     chapter_id: str
     chapter_number: int
     target_words: int = 3000
+    target_chapter_count: int = 1
+    is_final_chapter: bool = False
+    ending_required: bool = False
     blueprint: dict[str, Any] = field(default_factory=dict)
     narrative_memory: list[dict[str, Any]] = field(default_factory=list)
     # Accumulated outputs
@@ -114,6 +118,7 @@ class StoryPipeline:
             try:
                 update_step(step_record["id"], "running")
                 output = self._execute_step(step_name, workflow, ctx)
+                self._validate_step_output(step_name, output)
                 update_step(step_record["id"], "completed", output)
                 self._notify(on_step, step_name, "completed", output)
                 self._apply_output(step_name, ctx, output)
@@ -136,6 +141,17 @@ class StoryPipeline:
         """Execute a single pipeline step by calling the LLM workflow."""
         # Build generation context for this chapter
         gen_context = build_generation_context(ctx.project_id, ctx.chapter_id)
+        gen_context["generation_contract"] = {
+            "target_chapter_count": ctx.target_chapter_count,
+            "is_final_chapter": ctx.is_final_chapter,
+            "ending_required": ctx.ending_required,
+            "final_chapter_instruction": (
+                "这是本次托管任务的最后一章，必须收束主要冲突和情感债务，"
+                "不得写成未完待续，不得只留下下一章钩子。"
+                if ctx.is_final_chapter or ctx.ending_required
+                else ""
+            ),
+        }
 
         # Inject narrative memory into context (v4 horizontal feedback)
         if ctx.narrative_memory:
@@ -172,6 +188,18 @@ class StoryPipeline:
         output = run_model_or_stub(ctx.project_id, workflow, payload, gen_context)
         return output
 
+    def _validate_step_output(self, step_name: str, output: dict[str, Any]) -> None:
+        if step_name == "draft":
+            report = validate_chapter_prose(output.get("text", ""))
+        elif step_name == "deepen":
+            structured = output.get("structured") if isinstance(output.get("structured"), dict) else {}
+            revised = structured.get("revised_text") or output.get("text", "")
+            report = validate_chapter_prose(revised)
+        else:
+            return
+        if not report.ok:
+            raise ValueError("正文质量检查失败：" + "；".join(report.issues))
+
     def _apply_output(self, step_name: str, ctx: ChapterContext, output: dict[str, Any]) -> None:
         """Apply workflow output to the chapter context."""
         structured = output.get("structured") or {}
@@ -184,6 +212,7 @@ class StoryPipeline:
         elif step_name == "seed":
             if isinstance(structured, dict) and structured.get("emotion_seed"):
                 ctx.emotion_seed = structured["emotion_seed"]
+                create_emotion_seed(ctx.project_id, ctx.chapter_id, ctx.emotion_seed)
 
         elif step_name == "draft":
             ctx.draft = output.get("text", "")

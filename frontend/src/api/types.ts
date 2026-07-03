@@ -104,14 +104,21 @@ export interface BlueprintInput {
 export interface GenerationJob {
   id: string;
   project_id: string;
-  blueprint_id: string;
-  start_chapter: number;
+  volume_blueprint_id?: string;
+  blueprint_id?: string;
+  start_chapter_number?: number;
+  start_chapter?: number;
   target_chapter_count: number;
-  completed_chapter_count: number;
+  current_chapter_number?: number;
+  completed_chapter_count?: number;
+  current_step?: string;
   status: string;
   checkpoint_strategy: string;
-  auto_finalize: boolean;
-  params: Record<string, any>;
+  auto_finalize: boolean | number;
+  params_json?: string;
+  params?: Record<string, any>;
+  pause_reason?: string;
+  pause_detail?: string;
   error_message: string;
   created_at: string;
   updated_at: string;
@@ -129,13 +136,18 @@ export interface JobStartInput {
 export interface StepRecord {
   id: string;
   job_id: string;
+  project_id?: string;
   chapter_id: string;
+  chapter_number?: number;
   step_name: string;
-  step_index: number;
-  status: string;
-  output_text: string;
+  step_status?: string;
+  status?: string;
+  step_output?: string;
+  output_text?: string;
   error_message: string;
-  duration_ms: number;
+  duration_ms?: number;
+  started_at?: string;
+  completed_at?: string;
   created_at: string;
 }
 
@@ -238,7 +250,7 @@ export interface GenericRecord {
   title: string;
   category: string;
   content: string;
-  payload: string;
+  payload: Record<string, any>;
   status: string;
   created_at: string;
   updated_at: string;
