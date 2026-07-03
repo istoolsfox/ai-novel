@@ -169,8 +169,25 @@ def auto_generate_bridge(project_id: str, chapter: dict[str, Any]) -> dict[str, 
     draft = chapter.get("draft") or ""
     if not draft:
         return None
+    existing = get_chapter_bridge(project_id, chapter_id)
+    if existing:
+        return existing
+    with connect() as conn:
+        project = row_to_dict(
+            conn.execute("SELECT target_chapter_count FROM projects WHERE id = ?", (project_id,)).fetchone()
+        ) or {}
+    target_count = int(project.get("target_chapter_count") or 0)
+    is_final_chapter = bool(target_count and chapter_number >= target_count)
     bridge_payload = AiWorkflowIn(chapter_id=chapter_id, content=draft, prompt="生成章节衔接包")
-    bridge_context = {"chapter": chapter, "characters": list_records_for_context(project_id, "character-profiles")}
+    bridge_context = {
+        "chapter": chapter,
+        "characters": list_records_for_context(project_id, "character-profiles"),
+        "generation_contract": {
+            "target_chapter_count": target_count,
+            "is_final_chapter": is_final_chapter,
+            "ending_required": is_final_chapter,
+        },
+    }
     config = resolve_model_config(project_id, "generate_chapter_bridge")
     bridge_data: dict[str, Any] | None = None
     if config:

@@ -22,6 +22,8 @@ from ..infrastructure.database import (
     get_blueprint,
     get_job,
     get_active_narrative_memory,
+    create_chapter_quality_score,
+    get_chapter_bridge,
     insert_narrative_memory,
     new_id,
     row_to_dict,
@@ -32,6 +34,7 @@ from ..infrastructure.database import (
 from .checkpoint import CheckpointManager
 from .circuit_breaker import CircuitBreaker
 from .pipeline import ChapterContext, StoryPipeline
+from .quality import build_chapter_quality_report
 from ..workflows.blueprint_generator import check_foreshadowing_plan
 
 # Job event queue for SSE broadcasting
@@ -476,6 +479,21 @@ class Orchestrator:
             auto_generate_bridge(project_id, chapter)
         except Exception:
             pass
+        self._score_finalized_chapter(project_id, chapter_id)
+
+    def _score_finalized_chapter(self, project_id: str, chapter_id: str) -> None:
+        with connect() as conn:
+            chapter = row_to_dict(conn.execute("SELECT * FROM chapters WHERE id = ?", (chapter_id,)).fetchone())
+            project = row_to_dict(
+                conn.execute("SELECT target_chapter_count FROM projects WHERE id = ?", (project_id,)).fetchone()
+            ) or {}
+        if not chapter:
+            return
+        bridge = get_chapter_bridge(project_id, chapter_id)
+        target_count = _positive_int(project.get("target_chapter_count"))
+        is_final_chapter = bool(target_count and int(chapter.get("chapter_number") or 0) >= target_count)
+        report = build_chapter_quality_report(chapter, bridge, is_final_chapter=is_final_chapter)
+        create_chapter_quality_score(project_id, chapter_id, report)
 
 
 def start_job_thread(job_id: str) -> threading.Thread:

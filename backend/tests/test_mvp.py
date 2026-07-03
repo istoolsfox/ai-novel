@@ -1326,6 +1326,27 @@ def test_chapter_prose_quality_gate_rejects_outline_like_text():
     assert validate_chapter_prose(prose).ok
 
 
+def test_chapter_quality_report_flags_final_open_hooks():
+    from backend.app.engine.quality import build_chapter_quality_report
+
+    draft = (
+        "雨声贴着灰塔外墙往下落。顾栖月把最后一页档案放回铁柜，听见钟针重新向前挪了一格。"
+        "她没有立刻离开，而是把那些被删去的名字重新抄在纸上。每写下一个名字，城里就有一扇窗亮起来，"
+        "像有人终于记起回家的路。守夜人站在门口，没有再阻止她，只把旧钥匙放在桌角。"
+        "她知道这些记忆不会让失去变轻，却能让失去有一个可以被承认的位置。天快亮时，灰塔的门开了，"
+        "街道没有恢复成从前的样子，但人们开始彼此叫出名字。顾栖月把最后一页合上，走进清晨。"
+    )
+    report = build_chapter_quality_report(
+        {"draft": draft},
+        {"bridge_json": {"open_hooks": [{"hook": "灰塔深处还有另一本名单"}]}},
+        is_final_chapter=True,
+    )
+
+    assert report["ok"] is False
+    assert report["metrics"]["open_hook_count"] == 1
+    assert "终章仍有未回收钩子" in "；".join(report["issues"])
+
+
 def test_generation_job_fails_instead_of_persisting_outline_like_draft(monkeypatch, tmp_path):
     import time
 
@@ -1503,6 +1524,7 @@ def test_pure_hosted_generation_can_finish_15_chapters_and_export_closed_story(m
     assert len(chapters) == 15
     assert {chapter["status"] for chapter in chapters} == {"final"}
     assert all(chapter["word_count"] > 300 for chapter in chapters)
+    assert all(chapter["quality_score"] >= 70 for chapter in chapters)
     final_draft = chapters[-1]["draft"]
     assert "故事到这里停住" in final_draft
     assert "她在等——等的不是天亮" not in final_draft
@@ -1522,6 +1544,21 @@ def test_pure_hosted_generation_can_finish_15_chapters_and_export_closed_story(m
     assert "## 第 15 章" in memory
     assert len(memory) < len(markdown)
     assert "故事到这里停住" not in memory
+
+    from backend.app.infrastructure.database import connect, rows_to_dicts
+
+    with connect() as conn:
+        score_rows = rows_to_dicts(
+            conn.execute(
+                "SELECT * FROM chapter_scores WHERE project_id = ? ORDER BY created_at",
+                (project["id"],),
+            ).fetchall()
+        )
+    assert len(score_rows) == 15
+    final_score_payload = score_rows[-1]["payload"]
+    assert final_score_payload["metrics"]["is_final_chapter"] is True
+    assert final_score_payload["metrics"]["open_hook_count"] == 0
+    assert final_score_payload["ok"] is True
 
 
 def test_autopilot_prepares_bare_project_and_starts_hosted_generation(monkeypatch, tmp_path):

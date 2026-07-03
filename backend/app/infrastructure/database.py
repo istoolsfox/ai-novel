@@ -826,6 +826,23 @@ def create_reader_pull_report(project_id: str, chapter_id: str, report: dict[str
         return row_to_dict(conn.execute("SELECT * FROM reader_pull_reports WHERE id = ?", (report_id,)).fetchone())
 
 
+def create_chapter_quality_score(project_id: str, chapter_id: str, report: dict[str, Any]) -> dict[str, Any]:
+    score_id = new_id()
+    now = utc_now()
+    total_score = float(report.get("total_score", 0))
+    with connect() as conn:
+        conn.execute(
+            """INSERT INTO chapter_scores (id, project_id, chapter_id, total_score, payload, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (score_id, project_id, chapter_id, total_score, json.dumps(report, ensure_ascii=False), now),
+        )
+        conn.execute(
+            "UPDATE chapters SET quality_score = ?, updated_at = ? WHERE id = ?",
+            (total_score, now, chapter_id),
+        )
+        return row_to_dict(conn.execute("SELECT * FROM chapter_scores WHERE id = ?", (score_id,)).fetchone())
+
+
 def get_recent_reader_pull_reports(project_id: str, count: int = 3) -> list[dict[str, Any]]:
     with connect() as conn:
         return rows_to_dicts(
