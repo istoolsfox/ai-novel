@@ -35,6 +35,7 @@ from .checkpoint import CheckpointManager
 from .circuit_breaker import CircuitBreaker
 from .pipeline import ChapterContext, StoryPipeline
 from .quality import build_chapter_quality_report
+from ..application.memory_service import list_records_for_context
 from ..workflows.blueprint_generator import check_foreshadowing_plan
 
 # Job event queue for SSE broadcasting
@@ -492,7 +493,13 @@ class Orchestrator:
         bridge = get_chapter_bridge(project_id, chapter_id)
         target_count = _positive_int(project.get("target_chapter_count"))
         is_final_chapter = bool(target_count and int(chapter.get("chapter_number") or 0) >= target_count)
-        report = build_chapter_quality_report(chapter, bridge, is_final_chapter=is_final_chapter)
+        foreshadowings = list_records_for_context(project_id, "foreshadowings", 500)
+        report = build_chapter_quality_report(
+            chapter,
+            bridge,
+            is_final_chapter=is_final_chapter,
+            foreshadowings=foreshadowings,
+        )
         create_chapter_quality_score(project_id, chapter_id, report)
 
 

@@ -1352,6 +1352,69 @@ def test_chapter_quality_report_flags_final_open_hooks():
     assert "终章仍有未回收钩子" in "；".join(report["issues"])
 
 
+def test_blueprint_approval_syncs_foreshadowing_registry(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"title": "伏笔注册"}).json()
+    blueprint = client.post(
+        f"/api/projects/{project['id']}/blueprints",
+        json={
+            "volume_number": 1,
+            "volume_title": "第一卷",
+            "volume_arc": "从埋设白页到终章回收。",
+            "chapter_range": {"start": 1, "end": 3},
+            "key_foreshadowings": [
+                {
+                    "name": "白页名单",
+                    "planted_in": "第 1 章",
+                    "payoff_in": "第 3 章",
+                    "description": "白页会在终章显示被删除者姓名。",
+                }
+            ],
+        },
+    ).json()
+
+    approved = client.post(f"/api/projects/{project['id']}/blueprints/{blueprint['id']}/approve")
+
+    assert approved.status_code == 200
+    foreshadowings = client.get(f"/api/projects/{project['id']}/foreshadowings").json()
+    assert len(foreshadowings) == 1
+    payload = foreshadowings[0]["payload"]
+    assert payload["name"] == "白页名单"
+    assert payload["blueprint_id"] == blueprint["id"]
+    assert payload["status"] == "计划回收"
+    wiki = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "foreshadowing.md"})
+    assert wiki.status_code == 200
+    assert "白页名单" in wiki.json()["content"]
+
+
+def test_chapter_quality_report_flags_unresolved_blueprint_foreshadowings():
+    from backend.app.engine.quality import build_chapter_quality_report
+
+    draft = (
+        "雨声贴着灰塔外墙往下落。顾栖月把最后一页档案放回铁柜，听见钟针重新向前挪了一格。"
+        "她没有立刻离开，而是把那些被删去的名字重新抄在纸上。每写下一个名字，城里就有一扇窗亮起来，"
+        "像有人终于记起回家的路。守夜人站在门口，没有再阻止她，只把旧钥匙放在桌角。"
+        "她知道这些记忆不会让失去变轻，却能让失去有一个可以被承认的位置。天快亮时，灰塔的门开了，"
+        "街道没有恢复成从前的样子，但人们开始彼此叫出名字。顾栖月把最后一页合上，走进清晨。"
+    )
+    report = build_chapter_quality_report(
+        {"draft": draft},
+        {"bridge_json": {"open_hooks": []}},
+        is_final_chapter=True,
+        foreshadowings=[
+            {
+                "title": "白页名单",
+                "category": "blueprint_foreshadowing",
+                "payload": {"name": "白页名单", "status": "计划回收", "source": "blueprint"},
+            }
+        ],
+    )
+
+    assert report["ok"] is False
+    assert report["metrics"]["unresolved_foreshadowing_count"] == 1
+    assert report["unresolved_foreshadowings"] == ["白页名单"]
+
+
 def test_generation_job_fails_instead_of_persisting_outline_like_draft(monkeypatch, tmp_path):
     import time
 

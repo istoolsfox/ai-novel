@@ -71,6 +71,7 @@ def build_chapter_quality_report(
     bridge: dict[str, Any] | None = None,
     *,
     is_final_chapter: bool = False,
+    foreshadowings: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a deterministic chapter quality report for autonomous generation."""
     draft = str(chapter.get("draft") or "")
@@ -89,6 +90,11 @@ def build_chapter_quality_report(
     if has_continuation_ending:
         issues.append("终章结尾仍像未完待续")
 
+    unresolved_foreshadowings = _unresolved_foreshadowings(foreshadowings or [])
+    has_unresolved_foreshadowings = bool(is_final_chapter and unresolved_foreshadowings)
+    if has_unresolved_foreshadowings:
+        issues.append(f"终章仍有计划伏笔未回收：{len(unresolved_foreshadowings)}")
+
     repeated_fragments = _repeated_fragments(draft)
     if len(repeated_fragments) >= 6:
         issues.append(f"重复片段偏多：{len(repeated_fragments)}")
@@ -99,19 +105,29 @@ def build_chapter_quality_report(
         score -= min(35, len(open_hooks) * 12)
     if has_continuation_ending:
         score -= 30
+    if has_unresolved_foreshadowings:
+        score -= min(30, len(unresolved_foreshadowings) * 10)
     score -= min(20, max(0, len(repeated_fragments) - 2) * 3)
     score = max(0, min(100, score))
 
     return {
         "total_score": score,
-        "ok": score >= 70 and not prose_report.issues and not has_final_open_hooks and not has_continuation_ending,
+        "ok": (
+            score >= 70
+            and not prose_report.issues
+            and not has_final_open_hooks
+            and not has_continuation_ending
+            and not has_unresolved_foreshadowings
+        ),
         "issues": issues,
         "metrics": {
             "char_count": len(draft),
             "open_hook_count": len(open_hooks),
+            "unresolved_foreshadowing_count": len(unresolved_foreshadowings),
             "repeated_fragment_count": len(repeated_fragments),
             "is_final_chapter": is_final_chapter,
         },
+        "unresolved_foreshadowings": unresolved_foreshadowings[:10],
         "repeated_fragments": repeated_fragments[:10],
     }
 
@@ -150,6 +166,27 @@ def _looks_like_continuation_ending(text: str) -> bool:
         "有人来找她要",
     ]
     return any(marker in tail for marker in continuation_markers)
+
+
+def _unresolved_foreshadowings(records: list[dict[str, Any]]) -> list[str]:
+    unresolved: list[str] = []
+    resolved_statuses = {"已回收", "回收", "resolved", "closed", "done"}
+    for record in records:
+        payload = record.get("payload")
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        if payload.get("source") != "blueprint" and record.get("category") != "blueprint_foreshadowing":
+            continue
+        status = str(payload.get("status") or record.get("status") or "")
+        if status in resolved_statuses:
+            continue
+        unresolved.append(str(payload.get("name") or record.get("title") or "未命名伏笔"))
+    return unresolved
 
 
 def _repeated_fragments(text: str, width: int = 10) -> list[str]:

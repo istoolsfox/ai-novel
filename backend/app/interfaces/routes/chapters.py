@@ -22,6 +22,7 @@ from ...infrastructure.storage import project_root, require_project
 from ..dependencies import require_chapter
 from ...application.memory_service import (
     auto_generate_bridge,
+    list_records_for_context,
     rebuild_volume_memory,
     sync_chapter_memory_to_wiki,
     volume_name_for_chapter,
@@ -228,5 +229,11 @@ def _score_chapter(project_id: str, chapter: dict[str, Any]) -> None:
     target_count = int(project.get("target_chapter_count") or 0)
     is_final_chapter = bool(target_count and int(chapter.get("chapter_number") or 0) >= target_count)
     bridge = get_chapter_bridge(project_id, chapter["id"])
-    report = build_chapter_quality_report(chapter, bridge, is_final_chapter=is_final_chapter)
+    foreshadowings = list_records_for_context(project_id, "foreshadowings", 500)
+    report = build_chapter_quality_report(
+        chapter,
+        bridge,
+        is_final_chapter=is_final_chapter,
+        foreshadowings=foreshadowings,
+    )
     create_chapter_quality_score(project_id, chapter["id"], report)
