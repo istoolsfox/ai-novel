@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - codex/ai-novel-workbench-updates
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Compile backend
+        run: python -m compileall backend/app
+
+      - name: Run backend tests
+        env:
+          AI_NOVEL_DATA_DIR: ${{ runner.temp }}/ai-novel-data
+          AI_NOVEL_DATABASE_URL: sqlite:///${{ runner.temp }}/ai-novel-test.db
+        run: python -m pytest backend/tests/test_mvp.py -q
+
+      - name: Import FastAPI app smoke test
+        env:
+          AI_NOVEL_DATA_DIR: ${{ runner.temp }}/ai-novel-data
+          AI_NOVEL_DATABASE_URL: sqlite:///${{ runner.temp }}/ai-novel-smoke.db
+        run: |
+          python - <<'PY'
+          from backend.app.interfaces.main import app
+          print(app.title)
+          PY
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs:
+      - backend
+      - frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build deployment image
+        run: docker build -t ai-novel-ci:latest .
