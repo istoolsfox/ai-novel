@@ -1,3 +1,13 @@
+---
+title: AI Novel Demo
+emoji: 📝
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # AI 小说创作平台 · 全流程托管情感深度版
 
 > 面向长篇小说的 AI 托管生成工作台。核心差异化是**自动化流程 + 情感感染力 + llmwiki 记忆闭环**：用户只需要给出项目设定，系统自动准备大纲、角色、关系、情感约束和章节衔接，再托管生成正文。
