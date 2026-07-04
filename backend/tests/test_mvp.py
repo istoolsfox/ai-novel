@@ -1882,3 +1882,43 @@ def test_autopilot_prepares_bare_project_and_starts_hosted_generation(monkeypatc
     assert len(chapters) == 3
     assert {chapter["status"] for chapter in chapters} == {"final"}
     assert "故事到这里停住" in chapters[-1]["draft"]
+
+
+def test_generation_job_auto_exports_when_enabled(monkeypatch, tmp_path):
+    import time
+
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post(
+        "/api/projects",
+        json={
+            "title": "自动导出烟测",
+            "topic": "记忆停摆",
+            "target_chapter_count": 2,
+            "target_words_per_chapter": 500,
+        },
+    ).json()
+
+    response = client.post(
+        f"/api/projects/{project['id']}/jobs/autopilot",
+        json={
+            "count": 2,
+            "generation_mode": "fast",
+            "params": {"hosting_mode": "pure", "generation_mode": "fast", "auto_export": True},
+        },
+    )
+    assert response.status_code == 200
+    job = response.json()["job"]
+    for _ in range(120):
+        current = client.get(f"/api/projects/{project['id']}/jobs/{job['id']}").json()
+        if current["status"] in {"completed", "failed", "checkpoint", "aborted"}:
+            break
+        time.sleep(0.05)
+
+    assert current["status"] == "completed"
+    export_dir = Path(project["project_root_path"]) / "exports"
+    assert (export_dir / "novel.md").exists()
+    assert (export_dir / "novel.txt").exists()
+    assert (export_dir / "manifest.json").exists()
+    manifest = json.loads((export_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["deliverable"] is True
+    assert manifest["chapter_count"] == 2

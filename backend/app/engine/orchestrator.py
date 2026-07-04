@@ -35,6 +35,7 @@ from .checkpoint import CheckpointManager
 from .circuit_breaker import CircuitBreaker
 from .pipeline import ChapterContext, StoryPipeline
 from .quality import build_chapter_quality_report
+from ..application.export_service import export_all_files
 from ..application.memory_service import list_records_for_context
 from ..workflows.blueprint_generator import check_foreshadowing_plan
 
@@ -346,6 +347,20 @@ class Orchestrator:
                 return
 
         # All chapters done
+        if params.get("auto_export"):
+            try:
+                manifest = export_all_files(project_id)
+                broadcast_event(self.job_id, {
+                    "type": "auto_export_completed",
+                    "manifest": manifest,
+                    "timestamp": utc_now(),
+                })
+            except Exception as exc:
+                broadcast_event(self.job_id, {
+                    "type": "auto_export_failed",
+                    "error": str(exc),
+                    "timestamp": utc_now(),
+                })
         update_job_status(self.job_id, "completed")
         broadcast_event(self.job_id, {"type": "completed", "timestamp": utc_now()})
 
