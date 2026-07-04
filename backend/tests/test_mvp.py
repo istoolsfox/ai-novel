@@ -1119,6 +1119,40 @@ def test_orchestrator_resume_detects_completed_required_steps_by_step_status(mon
     assert Orchestrator(incomplete_job["id"])._is_chapter_complete(2) is False
 
 
+def test_job_detail_derives_durable_progress_from_steps(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"title": "进度派生"}).json()
+
+    from backend.app.infrastructure.database import create_job, create_step, update_step
+
+    job = create_job(
+        project["id"],
+        {
+            "start_chapter_number": 1,
+            "target_chapter_count": 2,
+            "checkpoint_strategy": "none",
+            "auto_finalize": 1,
+            "params": {},
+        },
+    )
+    for step_name in ["brief", "seed", "draft", "archaeology", "deepen", "finalize"]:
+        step = create_step(job["id"], project["id"], "chapter-1", 1, step_name)
+        update_step(step["id"], "completed", {"ok": True})
+    failed = create_step(job["id"], project["id"], "chapter-2", 2, "draft")
+    update_step(failed["id"], "failed", error="正文质量检查失败")
+
+    detail = client.get(f"/api/projects/{project['id']}/jobs/{job['id']}").json()
+    listing = client.get(f"/api/projects/{project['id']}/jobs").json()
+
+    assert detail["completed_chapter_count"] == 1
+    assert detail["progress_percent"] == 50
+    assert detail["current_chapter_number"] == 2
+    assert detail["failed_chapter_number"] == 2
+    assert detail["failed_step"] == "draft"
+    assert detail["last_step_error"] == "正文质量检查失败"
+    assert listing[0]["completed_chapter_count"] == 1
+
+
 def test_orchestrator_target_words_prefers_blueprint_then_project(monkeypatch, tmp_path):
     make_client(monkeypatch, tmp_path)
 

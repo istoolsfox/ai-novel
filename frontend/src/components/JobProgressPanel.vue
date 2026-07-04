@@ -46,6 +46,16 @@ onUnmounted(() => {
 
 // 步骤状态计算
 function getStepStatus(stepName: string): "done" | "active" | "pending" {
+  const chapterNumber = displayedChapterNumber.value;
+  const persisted = jobStore.steps
+    .filter((step) => step.step_name === stepName && (!chapterNumber || step.chapter_number === chapterNumber))
+    .pop();
+  if (persisted?.step_status === "completed" || persisted?.step_status === "skipped" || persisted?.status === "done") {
+    return "done";
+  }
+  if (persisted?.step_status === "running") {
+    return "active";
+  }
   const events = jobStore.sseEvents;
   const hasDone = events.some(
     (e) => e.type === "step" && e.step_name === stepName && ["completed", "skipped"].includes(e.status),
@@ -106,8 +116,16 @@ const progressPercentage = computed(() => {
       .filter((event) => event.type === "chapter_completed")
       .map((event) => event.chapter_number),
   ).size;
-  const done = jobStore.currentJob.completed_chapter_count ?? doneFromEvents;
-  return total > 0 ? Math.round((done / total) * 100) : 0;
+  const done = Math.max(jobStore.currentJob.completed_chapter_count ?? 0, doneFromEvents);
+  const derived = total > 0 ? Math.round((done / total) * 100) : 0;
+  return Math.max(jobStore.currentJob.progress_percent ?? 0, derived);
+});
+
+const displayedChapterNumber = computed(() => {
+  if (jobStore.currentChapterNumber) return jobStore.currentChapterNumber;
+  if (jobStore.currentJob?.current_chapter_number) return jobStore.currentJob.current_chapter_number;
+  const latestStep = [...jobStore.steps].reverse().find((step) => step.chapter_number);
+  return latestStep?.chapter_number || jobStore.currentJob?.completed_chapter_count || 0;
 });
 
 async function handlePause() {
@@ -170,7 +188,7 @@ const isPaused = computed(() => jobStatus.value === "paused" || jobStatus.value 
         <NGridItem>
           <NStatistic
             label="当前章节"
-            :value="jobStore.currentChapterNumber || jobStore.currentJob?.completed_chapter_count || 0"
+            :value="displayedChapterNumber"
           />
         </NGridItem>
         <NGridItem>

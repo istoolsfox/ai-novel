@@ -127,6 +127,10 @@ export interface GenerationJob {
   target_chapter_count: number;
   current_chapter_number?: number;
   completed_chapter_count?: number;
+  progress_percent?: number;
+  failed_chapter_number?: number;
+  failed_step?: string;
+  last_step_error?: string;
   current_step?: string;
   status: string;
   checkpoint_strategy: string;

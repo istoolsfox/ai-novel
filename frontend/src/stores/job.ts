@@ -115,6 +115,10 @@ export const useJobStore = defineStore("job", () => {
           .filter((e) => e.type === "chapter_completed")
           .map((e) => e.chapter_number),
       ).size;
+      const target = currentJob.value.target_chapter_count || 0;
+      currentJob.value.progress_percent = target
+        ? Math.round((currentJob.value.completed_chapter_count / target) * 100)
+        : currentJob.value.progress_percent;
       return;
     }
 
