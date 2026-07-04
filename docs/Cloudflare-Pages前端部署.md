@@ -144,3 +144,5 @@ Render Free 休眠后第一次访问会慢
 ```
 
 如果以后要长期保存项目，建议把后端数据库和文件记忆迁移到持久化存储。
+
+<!-- smoke: cloudflare-pages-static-frontend -->
