@@ -14,6 +14,8 @@ VITE_API_BASE_URL=https://你的后端地址
 
 同时路由已经改成 Hash 模式，所以 Cloudflare Pages 上刷新子页面不会 404。
 
+仓库根目录已经移除了会让 Cloudflare 误判成 Python 项目的 `pyproject.toml` 和 `runtime.txt`，并新增了根目录 `package.json`，即使 Root directory 没选对，也能用根目录脚本转到 `frontend` 构建。
+
 ## 推荐架构
 
 ```text
@@ -66,13 +68,28 @@ wlxb625/ai-novel
 codex/ai-novel-workbench-updates
 ```
 
-构建配置：
+推荐构建配置：
 
 ```text
 Framework preset: Vite
 Root directory: frontend
 Build command: npm install && npm run build
 Build output directory: dist
+```
+
+如果 Cloudflare 没有正确应用 Root directory，就用备用配置：
+
+```text
+Framework preset: None / Vite 都可以
+Root directory: 留空
+Build command: npm run build
+Build output directory: frontend/dist
+```
+
+根目录的 `package.json` 会自动执行：
+
+```text
+cd frontend && npm install && npm run build
 ```
 
 ## 三、配置环境变量
@@ -90,6 +107,12 @@ VITE_API_BASE_URL=https://ai-novel.onrender.com
 ```
 
 注意不要在末尾加 `/`。
+
+如果页面里有 Node 版本设置，建议加：
+
+```text
+NODE_VERSION=22
+```
 
 ## 四、部署并访问
 
@@ -127,7 +150,26 @@ novel.example.com
 
 因为域名本来就在 Cloudflare，通常会自动帮你添加 DNS 记录。
 
-## 六、限制说明
+## 六、常见失败：pip install . / Multiple top-level packages
+
+如果日志里出现：
+
+```text
+Installing project dependencies: pip install .
+Multiple top-level packages discovered in a flat-layout: ['api', 'backend', 'desktop', 'frontend']
+```
+
+说明 Cloudflare 把仓库根目录误判成了 Python 项目。当前仓库已经修复：删除了根目录 `pyproject.toml` 和 `runtime.txt`。
+
+处理方法：
+
+```text
+1. 确认部署使用最新提交
+2. 在 Cloudflare Pages 里点击 Retry deployment
+3. 如果还是进入 Python 安装流程，改用备用配置：Root directory 留空，Build command 用 npm run build，Output 用 frontend/dist
+```
+
+## 七、限制说明
 
 这种方案的优点是：
 
