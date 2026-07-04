@@ -16,3 +16,4 @@ mkdirSync(repoDir, { recursive: true });
 rmSync(rootDist, { recursive: true, force: true });
 cpSync(frontendDist, rootDist, { recursive: true });
 console.log(`Synced ${frontendDist} -> ${rootDist}`);
+console.log("Cloudflare Pages root output is ready.");
