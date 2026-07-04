@@ -470,13 +470,8 @@ class Orchestrator:
             pass  # Voice trait harvesting failure doesn't block generation
 
     def _finalize_chapter(self, project_id: str, chapter_id: str) -> None:
-        """Mark chapter as finalized."""
-        from ..application.memory_service import (
-            rebuild_volume_memory,
-            sync_chapter_memory_to_wiki,
-            volume_name_for_chapter,
-            auto_generate_bridge,
-        )
+        """Mark chapter as finalized and persist full llmwiki memory pages."""
+        from ..application.memory_service import finalize_chapter_wiki_sync
         with connect() as conn:
             chapter = row_to_dict(conn.execute("SELECT * FROM chapters WHERE id = ?", (chapter_id,)).fetchone())
             if not chapter:
@@ -489,12 +484,16 @@ class Orchestrator:
             )
             chapter["summary"] = summary
             chapter["status"] = "final"
-        sync_chapter_memory_to_wiki(project_id, chapter)
-        rebuild_volume_memory(project_id, volume_name_for_chapter(chapter))
         try:
-            auto_generate_bridge(project_id, chapter)
-        except Exception:
-            pass
+            finalize_chapter_wiki_sync(project_id, chapter)
+        except Exception as exc:
+            broadcast_event(self.job_id, {
+                "type": "wiki_sync_failed",
+                "chapter_number": chapter.get("chapter_number"),
+                "error": str(exc),
+                "timestamp": utc_now(),
+            })
+            raise
         self._score_finalized_chapter(project_id, chapter_id)
 
     def _score_finalized_chapter(self, project_id: str, chapter_id: str) -> None:
@@ -518,15 +517,21 @@ class Orchestrator:
         create_chapter_quality_score(project_id, chapter_id, report)
 
 
-def start_job_thread(job_id: str) -> threading.Thread:
-    """Start the orchestrator in a background thread."""
-    # Clear abort flag and old events
-    _JOB_ABORT_FLAGS[job_id] = False
+def start_job_thread(job_id: str) -> None:
+    """Start an orchestrator thread for a job."""
+    # Clear abort flag
+    _JOB_ABORT_FLAGS.pop(job_id, None)
+
+    # Initialize event queue
     with _JOB_EVENTS_LOCK:
         _JOB_EVENTS[job_id] = []
 
     orchestrator = Orchestrator(job_id)
-    thread = threading.Thread(target=orchestrator.run, daemon=True, name=f"job-{job_id}")
+    thread = threading.Thread(target=orchestrator.run, daemon=True)
     _JOB_THREADS[job_id] = thread
     thread.start()
-    return thread
+
+
+def get_running_jobs() -> list[dict[str, Any]]:
+    """Get active jobs from DB."""
+    return get_active_jobs()
