@@ -1,5 +1,6 @@
 import importlib
 import json
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -197,6 +198,50 @@ def test_export_only_contains_current_project_chapters(monkeypatch, tmp_path):
     assert "不应导出" not in markdown.text
     assert "这是当前项目正文" in text.text
     assert "不应导出" not in text.text
+
+
+def test_export_manifest_reports_deliverable_status(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post(
+        "/api/projects",
+        json={"title": "交付清单", "target_chapter_count": 2},
+    ).json()
+    first = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={
+            "chapter_number": 1,
+            "title": "第一章",
+            "draft": "第一章正文。" * 120,
+            "status": "final",
+        },
+    ).json()
+    second = client.post(
+        f"/api/projects/{project['id']}/chapters",
+        json={
+            "chapter_number": 2,
+            "title": "第二章",
+            "draft": "第二章正文。" * 120,
+            "status": "final",
+        },
+    ).json()
+    from backend.app.infrastructure.database import create_chapter_quality_score
+
+    create_chapter_quality_score(project["id"], first["id"], {"total_score": 92, "ok": True, "metrics": {}})
+    create_chapter_quality_score(project["id"], second["id"], {"total_score": 88, "ok": True, "metrics": {}})
+
+    manifest = client.get(f"/api/projects/{project['id']}/export/manifest")
+
+    assert manifest.status_code == 200
+    data = manifest.json()
+    assert data["deliverable"] is True
+    assert data["chapter_count"] == 2
+    assert data["final_chapter_count"] == 2
+    assert data["average_quality_score"] == 90
+    assert data["missing_chapter_numbers"] == []
+    assert data["unfinished_chapters"] == []
+    manifest_path = Path(project["project_root_path"]) / "exports" / "manifest.json"
+    assert manifest_path.exists()
+    assert "交付清单" in manifest_path.read_text(encoding="utf-8")
 
 
 def test_auth_endpoints_keep_local_mode_optional(monkeypatch, tmp_path):
@@ -1763,6 +1808,15 @@ def test_pure_hosted_generation_can_finish_15_chapters_and_export_closed_story(m
     assert "## 第 15 章" in markdown
     assert "故事到这里停住" in markdown
     assert "第 15 章 · 第 15 章" not in markdown
+
+    manifest = client.get(f"/api/projects/{project['id']}/export/manifest")
+    assert manifest.status_code == 200
+    manifest_payload = manifest.json()
+    assert manifest_payload["deliverable"] is True
+    assert manifest_payload["chapter_count"] == 15
+    assert manifest_payload["final_chapter_count"] == 15
+    assert manifest_payload["missing_chapter_numbers"] == []
+    assert manifest_payload["low_quality_chapters"] == []
 
     volume = client.get(f"/api/projects/{project['id']}/wiki/read", params={"path": "关键记忆.md"})
     assert volume.status_code == 200

@@ -291,6 +291,21 @@ export interface VersionInput {
   context_summary?: string;
 }
 
+export interface ExportManifest {
+  project_id: string;
+  title: string;
+  target_chapter_count: number;
+  chapter_count: number;
+  final_chapter_count: number;
+  total_words: number;
+  average_quality_score: number;
+  deliverable: boolean;
+  missing_chapter_numbers: number[];
+  unfinished_chapters: Array<{ chapter_number: number; title: string }>;
+  low_quality_chapters: Array<{ chapter_number: number; title: string; quality_score: number }>;
+  exports: Record<string, string>;
+}
+
 export interface AuthStatus {
   mode: string;
   authenticated: boolean;

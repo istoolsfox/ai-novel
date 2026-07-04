@@ -23,6 +23,7 @@ import type {
   AiWorkflowOutput,
   GenericRecord,
   GenericInput,
+  ExportManifest,
   AuthStatus,
 } from "./types";
 
@@ -209,6 +210,8 @@ export const resourceApi = {
 
 // ===== 导出 =====
 export const exportApi = {
+  manifest: (projectId: string) =>
+    api.get<ExportManifest>(`/api/projects/${projectId}/export/manifest`),
   markdown: (projectId: string) =>
     downloadFile(`/api/projects/${projectId}/export/markdown`, "novel.md"),
   txt: (projectId: string) =>

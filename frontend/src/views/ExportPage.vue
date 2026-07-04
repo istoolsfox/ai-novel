@@ -5,16 +5,18 @@ import {
   NCard, NSpace, NButton, NTag, NText, NEmpty, NStatistic, NGrid, NGridItem, useMessage,
 } from "naive-ui";
 import { chapterApi, exportApi } from "../api";
-import type { Chapter } from "../api/types";
+import type { Chapter, ExportManifest } from "../api/types";
 
 const route = useRoute();
 const message = useMessage();
 const projectId = computed(() => route.params.projectId as string);
 const chapters = ref<Chapter[]>([]);
+const manifest = ref<ExportManifest | null>(null);
 const exporting = ref(false);
 
 onMounted(async () => {
   chapters.value = await chapterApi.list(projectId.value);
+  manifest.value = await exportApi.manifest(projectId.value);
 });
 
 const totalWords = computed(() =>
@@ -66,6 +68,53 @@ async function handleExport(format: typeof formats[0]) {
         </NCard>
       </NGridItem>
     </NGrid>
+
+    <NCard title="交付状态" style="margin-bottom: 16px" v-if="manifest">
+      <NSpace vertical size="small">
+        <NSpace align="center">
+          <NTag :type="manifest.deliverable ? 'success' : 'warning'" size="large">
+            {{ manifest.deliverable ? "可交付" : "需处理" }}
+          </NTag>
+          <NText depth="3">
+            {{ manifest.final_chapter_count }} / {{ manifest.target_chapter_count }} 章定稿，
+            平均质量 {{ manifest.average_quality_score }} 分
+          </NText>
+        </NSpace>
+        <NSpace v-if="manifest.missing_chapter_numbers.length" size="small">
+          <NText depth="3">缺失章节</NText>
+          <NTag
+            v-for="num in manifest.missing_chapter_numbers"
+            :key="num"
+            type="error"
+            size="small"
+          >
+            第 {{ num }} 章
+          </NTag>
+        </NSpace>
+        <NSpace v-if="manifest.unfinished_chapters.length" size="small">
+          <NText depth="3">未定稿</NText>
+          <NTag
+            v-for="ch in manifest.unfinished_chapters"
+            :key="ch.chapter_number"
+            type="warning"
+            size="small"
+          >
+            第 {{ ch.chapter_number }} 章
+          </NTag>
+        </NSpace>
+        <NSpace v-if="manifest.low_quality_chapters.length" size="small">
+          <NText depth="3">低质量</NText>
+          <NTag
+            v-for="ch in manifest.low_quality_chapters"
+            :key="ch.chapter_number"
+            type="error"
+            size="small"
+          >
+            第 {{ ch.chapter_number }} 章 · {{ ch.quality_score }} 分
+          </NTag>
+        </NSpace>
+      </NSpace>
+    </NCard>
 
     <NCard title="选择导出格式">
       <NEmpty v-if="chapters.length === 0" description="还没有章节，无法导出" />

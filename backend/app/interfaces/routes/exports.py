@@ -2,6 +2,7 @@
 
 支持 markdown / txt / docx / pdf / epub 五种格式。
 """
+import json
 from io import BytesIO
 import re
 from typing import Any
@@ -51,6 +52,71 @@ def _strip_embedded_chapter_heading(chapter: dict[str, Any]) -> str:
     chapter_number = int(chapter.get("chapter_number") or 0)
     heading_pattern = rf"^(?:第\s*{chapter_number}\s*章(?:\s*[·:：-]\s*{re.escape(title)})?|{re.escape(title)})\s*\n+"
     return re.sub(heading_pattern, "", draft, count=1).lstrip()
+
+
+def _export_manifest(project_id: str) -> dict[str, Any]:
+    project = require_project(project_id)
+    chapters = _project_chapters_for_export(project_id)
+    total_words = sum(int(chapter.get("word_count") or 0) for chapter in chapters)
+    final_chapters = [
+        chapter
+        for chapter in chapters
+        if chapter.get("status") in {"final", "finalized"}
+    ]
+    target_count = int(project.get("target_chapter_count") or len(chapters) or 0)
+    quality_scores = [float(chapter.get("quality_score") or 0) for chapter in chapters if float(chapter.get("quality_score") or 0) > 0]
+    average_quality = round(sum(quality_scores) / len(quality_scores), 1) if quality_scores else 0
+    unfinished = [
+        {"chapter_number": chapter.get("chapter_number"), "title": chapter.get("title") or ""}
+        for chapter in chapters
+        if chapter.get("status") not in {"final", "finalized"}
+    ]
+    low_quality = [
+        {
+            "chapter_number": chapter.get("chapter_number"),
+            "title": chapter.get("title") or "",
+            "quality_score": chapter.get("quality_score") or 0,
+        }
+        for chapter in chapters
+        if chapter.get("quality_score") and float(chapter.get("quality_score") or 0) < 70
+    ]
+    missing_numbers = sorted(set(range(1, target_count + 1)) - {int(chapter.get("chapter_number") or 0) for chapter in chapters})
+    deliverable = bool(
+        target_count
+        and len(chapters) >= target_count
+        and len(final_chapters) >= target_count
+        and not unfinished
+        and not low_quality
+        and not missing_numbers
+    )
+    manifest = {
+        "project_id": project_id,
+        "title": project["title"],
+        "target_chapter_count": target_count,
+        "chapter_count": len(chapters),
+        "final_chapter_count": len(final_chapters),
+        "total_words": total_words,
+        "average_quality_score": average_quality,
+        "deliverable": deliverable,
+        "missing_chapter_numbers": missing_numbers,
+        "unfinished_chapters": unfinished,
+        "low_quality_chapters": low_quality,
+        "exports": {
+            "markdown": "exports/novel.md",
+            "txt": "exports/novel.txt",
+            "docx": "exports/novel.docx",
+            "pdf": "exports/novel.pdf",
+            "epub": "exports/novel.epub",
+        },
+    }
+    manifest_path = project_root(project_id) / "exports" / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    return manifest
+
+
+@router.get("/manifest")
+def export_manifest(project_id: str) -> dict[str, Any]:
+    return _export_manifest(project_id)
 
 
 @router.get("/markdown", response_class=PlainTextResponse)
