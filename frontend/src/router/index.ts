@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
+import { createRouter, createWebHashHistory, type RouteRecordRaw } from "vue-router";
 
 const routes: RouteRecordRaw[] = [
   {
@@ -128,7 +128,8 @@ const routes: RouteRecordRaw[] = [
 ];
 
 const router = createRouter({
-  history: createWebHistory(),
+  // Hash 路由能直接部署到 Cloudflare Pages / Netlify / Vercel 静态站点，刷新子页面不会 404。
+  history: createWebHashHistory(),
   routes,
 });
 
