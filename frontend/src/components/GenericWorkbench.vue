@@ -64,6 +64,28 @@ function resetForm() {
   editingId.value = "";
 }
 
+function fieldValueToText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (item === null || item === undefined) return "";
+        if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+          return String(item);
+        }
+        return JSON.stringify(item, null, 2);
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value, null, 2);
+  }
+  return String(value);
+}
+
 function selectRecord(record: GenericRecord) {
   editingId.value = record.id;
   let payload: Record<string, any> = {};
@@ -72,7 +94,8 @@ function selectRecord(record: GenericRecord) {
   } catch {}
   const init: Record<string, any> = {};
   for (const f of props.config.fields) {
-    init[f.key] = payload[f.key] ?? record[f.key as keyof GenericRecord] ?? "";
+    const value = payload[f.key] ?? record[f.key as keyof GenericRecord] ?? "";
+    init[f.key] = f.type === "number" ? value : fieldValueToText(value);
   }
   formData.value = init;
 }
@@ -82,7 +105,7 @@ async function handleSave() {
   const title = formData.value[titleField.key] || "未命名";
   const contentFields = props.config.fields
     .filter((f) => f.type === "textarea" || f.key === "content")
-    .map((f) => formData.value[f.key])
+    .map((f) => fieldValueToText(formData.value[f.key]))
     .filter(Boolean)
     .join("\n");
   const payload: GenericInput = {
@@ -138,7 +161,7 @@ async function handleAI(mode?: string) {
       const structured = typeof result.structured === "object" ? result.structured : {};
       for (const f of props.config.fields) {
         if (structured[f.key] !== undefined) {
-          formData.value[f.key] = String(structured[f.key]);
+          formData.value[f.key] = f.type === "number" ? structured[f.key] : fieldValueToText(structured[f.key]);
         }
       }
     }
@@ -153,7 +176,7 @@ function applyResult(content: string) {
     const parsed = JSON.parse(content);
     for (const f of props.config.fields) {
       if (parsed[f.key] !== undefined) {
-        formData.value[f.key] = String(parsed[f.key]);
+        formData.value[f.key] = f.type === "number" ? parsed[f.key] : fieldValueToText(parsed[f.key]);
       }
     }
     message.success("AI 结果已填入表单");
