@@ -1441,6 +1441,7 @@ test('shows a global execution indicator while saving model configuration', asyn
   await screen.findByRole('button', { name: /测试项目/ });
   fireEvent.click(screen.getByText('设置'));
   fireEvent.click(screen.getByRole('button', { name: /模型配置/ }));
+  fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'sk-test' } });
   fireEvent.change(screen.getByLabelText('Model Name'), { target: { value: 'gpt-test' } });
   fireEvent.click(screen.getByText('保存配置'));
 

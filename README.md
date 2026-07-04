@@ -10,9 +10,22 @@
 - 章节工作台：章节编辑、候选版本、设为当前正文、独立评分、定稿。
 - 创作资料：人物、世界观、时间线、伏笔、雷点、风格档案、知识库资料。
 - 本地 Wiki 记忆：每个项目创建 `memory/raw_sources/`、`memory/wiki/`、`memory/index/`。
-- AI 工作流：当前为本地 stub，可替换为真实 OpenAI-compatible 调用。
+- AI 工作流：要求配置真实远程模型；未配置或调用失败时直接报错，不再回退到本地占位正文。
 - 情感增强：编辑器 AI 副驾支持情感种子、五层情感考古、对话潜台词、追读力检查、情感加深藏回和去 AI 味工作流。
 - 导出：Markdown、TXT、DOCX、PDF、EPUB。
+
+## 远程模型配置
+
+进入前端 `设置 -> 模型配置`，选择服务商、填写 API Key，并点击“测试连接”。测试通过后勾选“是否默认模型”，或在 `任务路由` 中为不同 AI 工作流指定模型。
+
+内置预设：
+
+- DeepSeek：`https://api.deepseek.com/v1`，默认模型 `deepseek-chat`
+- Xiaomi MiMo：`https://api.xiaomimimo.com/v1`，默认模型 `mimo-v2.5-pro`
+- MiniMax：`https://api.minimax.io/v1`，默认模型 `MiniMax-M3`
+- OpenAI / 自定义 OpenAI-compatible：按服务商文档填写 Base URL 和模型名
+
+MiMo 调用会使用 `api-key` 请求头和 `max_completion_tokens`；其他 OpenAI-compatible 服务默认使用 Bearer Token 和 `max_tokens`。
 
 ## 开发约束
 

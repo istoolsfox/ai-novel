@@ -102,11 +102,46 @@ const resourceMap: Record<TabKey, string | null> = {
 const providerOptions = [
   'OpenAI',
   'DeepSeek',
+  'Xiaomi MiMo',
+  'MiniMax',
   'Claude Compatible',
   'Gemini Compatible',
   'Ollama',
   '自定义 OpenAI-compatible',
 ];
+
+const providerPresets: Record<string, Pick<ModelPayload, 'base_url' | 'model_name' | 'temperature' | 'max_tokens'>> = {
+  OpenAI: {
+    base_url: 'https://api.openai.com/v1',
+    model_name: 'gpt-4o-mini',
+    temperature: 0.7,
+    max_tokens: 4000,
+  },
+  DeepSeek: {
+    base_url: 'https://api.deepseek.com/v1',
+    model_name: 'deepseek-chat',
+    temperature: 0.7,
+    max_tokens: 8000,
+  },
+  'Xiaomi MiMo': {
+    base_url: 'https://api.xiaomimimo.com/v1',
+    model_name: 'mimo-v2.5-pro',
+    temperature: 0.7,
+    max_tokens: 8000,
+  },
+  MiniMax: {
+    base_url: 'https://api.minimax.io/v1',
+    model_name: 'MiniMax-M3',
+    temperature: 0.7,
+    max_tokens: 8000,
+  },
+  Ollama: {
+    base_url: 'http://127.0.0.1:11434/v1',
+    model_name: 'qwen2.5:14b',
+    temperature: 0.7,
+    max_tokens: 4000,
+  },
+};
 
 const workflowOptions = [
   { key: 'generate_chapter_variants', label: '章节正文生成' },
@@ -131,7 +166,7 @@ const settingsSections: Array<{ key: SettingsSection; title: string; description
   { key: 'models', title: '模型配置', description: '管理 OpenAI-compatible 模型' },
   { key: 'routes', title: '任务路由', description: '为不同 AI 任务选择模型' },
   { key: 'privacy', title: '隐私模式', description: '确认本地优先和上传边界' },
-  { key: 'status', title: '调用状态', description: '查看 API、fallback 和本地占位状态' },
+  { key: 'status', title: '调用状态', description: '查看远程 API、错误和调用状态' },
 ];
 
 const settingsTitleMap = settingsSections.reduce<Record<SettingsSection, string>>((acc, item) => {
@@ -1820,7 +1855,7 @@ export default function App() {
   }
 
   function modelLabel(record?: GenericRecord) {
-    if (!record) return '当前使用本地占位模型';
+    if (!record) return '未配置远程模型';
     const payload = parseModelPayload(record);
     return `${record.title || payload.model_name || '未命名模型'} · ${payload.model_name || payload.provider}`;
   }
@@ -1834,20 +1869,42 @@ export default function App() {
 
   function formatAiLog(result: { status?: string; error?: string; text: string }, prefix = '') {
     if (result.status === 'local') {
-      return `${prefix}当前没有可用于该任务的远程模型，已使用本地占位结果。${result.error ? `原因：${result.error}` : ''}`;
+      return `${prefix}当前没有可用于该任务的远程模型，本次没有生成占位正文。${result.error ? `原因：${result.error}` : ''}`;
     }
     if (result.status === 'fallback') {
       if (result.error?.includes('仍可能在生成') || result.error?.includes('暂未返回结果')) {
-        return `${prefix}远程模型仍可能在生成，当前显示本地占位结果。${result.error ? `说明：${result.error}` : ''}`;
+        return `${prefix}远程模型超时，本次没有生成占位正文。${result.error ? `说明：${result.error}` : ''}`;
       }
-      return `${prefix}远程模型调用失败，已回退到本地占位结果。${result.error ? `错误摘要：${result.error}` : ''}`;
+      return `${prefix}远程模型调用失败，本次没有生成占位正文。${result.error ? `错误摘要：${result.error}` : ''}`;
     }
     return `${prefix}${result.text}`;
+  }
+
+  function applyProviderPreset(provider: string) {
+    const preset = providerPresets[provider];
+    setModelForm((current) => ({
+      ...current,
+      provider,
+      ...(preset ?? {}),
+      title:
+        current.title ||
+        (provider === 'DeepSeek'
+          ? 'DeepSeek 写作模型'
+          : provider === 'Xiaomi MiMo'
+            ? 'Xiaomi MiMo 写作模型'
+            : provider === 'MiniMax'
+              ? 'MiniMax 写作模型'
+              : current.title),
+    }));
   }
 
   async function saveModelConfig() {
     if (!selectedProject) {
       setLog('请先选择项目，再保存模型配置。');
+      return;
+    }
+    if (!modelForm.api_key.trim() || !modelForm.model_name.trim() || !modelForm.base_url.trim()) {
+      setLog('模型配置未保存：真实测试必须填写 API Key、Base URL 和 Model Name。');
       return;
     }
     const executionTitle = '保存模型配置';
@@ -2327,7 +2384,7 @@ export default function App() {
                 </div>
                 <div className="settings-badges">
                   <span>{authStatus.authenticated ? '已登录' : '本地模式'}</span>
-                  <span>{modelConfigs.length ? `${modelConfigs.length} 个模型` : '占位模型'}</span>
+                  <span>{modelConfigs.length ? `${modelConfigs.length} 个模型` : '未配置模型'}</span>
                 </div>
               </div>
 
@@ -2411,7 +2468,7 @@ export default function App() {
                       服务商类型
                       <select
                         value={modelForm.provider}
-                        onChange={(event) => setModelForm({ ...modelForm, provider: event.target.value })}
+                        onChange={(event) => applyProviderPreset(event.target.value)}
                       >
                         {providerOptions.map((provider) => (
                           <option key={provider} value={provider}>
@@ -2513,7 +2570,7 @@ export default function App() {
                         </article>
                       );
                     })}
-                    {modelConfigs.length === 0 && <p className="empty-state">还没有模型配置，AI 操作会使用本地占位模型。</p>}
+                    {modelConfigs.length === 0 && <p className="empty-state">还没有模型配置，AI 操作会要求先接入真实远程模型。</p>}
                   </div>
                 </div>
               )}
@@ -2536,7 +2593,7 @@ export default function App() {
                             value={selected?.id ?? ''}
                             onChange={(event) => void saveTaskRoute(workflow.key, event.target.value)}
                           >
-                            <option value="">本地占位模型</option>
+                            <option value="">未配置远程模型</option>
                             {modelConfigs.map((model) => (
                               <option key={model.id} value={model.id}>
                                 {modelLabel(model)}

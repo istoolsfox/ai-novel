@@ -35,6 +35,48 @@ def create_story_prerequisites(client: TestClient, project_id: str, chapter_numb
     )
 
 
+def create_default_model_config(client: TestClient, project_id: str):
+    return client.post(
+        f"/api/projects/{project_id}/model-configs",
+        json={
+            "title": "测试远程模型",
+            "category": "OpenAI-compatible",
+            "content": "writer-model",
+            "payload": {
+                "api_key": "test-key",
+                "base_url": "https://example.test/v1",
+                "model_name": "writer-model",
+                "temperature": 0.7,
+                "max_tokens": 4000,
+                "is_default": True,
+            },
+        },
+    )
+
+
+def mock_remote_chat(monkeypatch, responder):
+    import backend.app.main as main
+
+    class FakeResponse:
+        def __init__(self, content: str):
+            self.content = content
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": self.content}}]}, ensure_ascii=False).encode("utf-8")
+
+    def fake_urlopen(request, timeout=0):
+        body = request.data.decode("utf-8")
+        return FakeResponse(responder(body, timeout))
+
+    monkeypatch.setattr(main.urllib.request, "urlopen", fake_urlopen)
+
+
 def test_project_creation_creates_local_memory_directories(monkeypatch, tmp_path):
     client = make_client(monkeypatch, tmp_path)
 
@@ -128,8 +170,23 @@ def test_emotional_enrichment_workflows_return_actionable_outputs(monkeypatch, t
             "chapter_number": 1,
             "title": "雨夜档案馆",
             "draft": "她看见证词上有自己的签名，却没有立刻说话。",
-        },
-    ).json()
+            },
+        ).json()
+    create_default_model_config(client, project["id"])
+    mock_remote_chat(
+        monkeypatch,
+        lambda body, _timeout: (
+            json.dumps(
+                {
+                    "core_emotion": "她害怕签名证明自己曾经背叛过重要的人。",
+                    "sensory_anchor": "雨声和纸页潮气",
+                },
+                ensure_ascii=False,
+            )
+            if "generate_emotion_seed" in body
+            else "她看见证词上有自己的签名，指尖在纸边停了很久，雨水的冷意顺着袖口往里渗。"
+        ),
+    )
 
     seed = client.post(
         f"/api/projects/{project['id']}/ai/generate_emotion_seed",
@@ -508,11 +565,10 @@ def test_generation_timeout_message_treats_slow_model_as_still_generating(monkey
         json={"prompt": "生成 5 章大纲"},
     )
 
-    assert response.status_code == 200
-    output = response.json()
-    assert output["status"] == "fallback"
-    assert "仍可能在生成" in output["error"]
-    assert "调小生成长度" not in output["error"]
+    assert response.status_code == 504
+    detail = response.json()["detail"]
+    assert "未返回" in detail
+    assert "不会回退到本地占位正文" in detail
 
 
 def test_ai_workflow_returns_structured_json_and_generation_context(monkeypatch, tmp_path):
@@ -535,6 +591,15 @@ def test_ai_workflow_returns_structured_json_and_generation_context(monkeypatch,
             "payload": {"chapter_title": "第一章", "chapter_goal": "发现古籍"},
         },
     )
+    create_default_model_config(client, project["id"])
+    mock_remote_chat(
+        monkeypatch,
+        lambda body, _timeout: (
+            json.dumps({"name": "闻岚", "desire": "找回被改写的记忆"}, ensure_ascii=False)
+            if "generate_characters" in body
+            else "第一章正文：沈照夜在雨夜发现古籍，意识到记忆正在被改写。"
+        ),
+    )
 
     character_ai = client.post(
         f"/api/projects/{project['id']}/ai/generate_characters",
@@ -552,11 +617,11 @@ def test_ai_workflow_returns_structured_json_and_generation_context(monkeypatch,
     assert "outlines" in context
     assert "wiki_pages" in context
     assert any(item["title"] == "沈照夜" for item in context["characters"])
-    assert draft_ai["status"] == "local"
-    assert "本地占位" in draft_ai["error"]
+    assert draft_ai["status"] == "success"
+    assert draft_ai["model"] == "writer-model"
 
 
-def test_local_chapter_draft_generates_chapter_specific_prose(monkeypatch, tmp_path):
+def test_remote_chapter_draft_generates_chapter_specific_prose(monkeypatch, tmp_path):
     client = make_client(monkeypatch, tmp_path)
     project = client.post(
         "/api/projects",
@@ -592,6 +657,16 @@ def test_local_chapter_draft_generates_chapter_specific_prose(monkeypatch, tmp_p
             },
         },
     )
+    create_default_model_config(client, project["id"])
+    mock_remote_chat(
+        monkeypatch,
+        lambda _body, _timeout: (
+            "第 37 章 · 灰塔回声\n\n沈照夜在灰塔深处翻出反噬证词。"
+            "她没有把恐惧说出口，只听见雨声压过门禁的电流声。“如果这是真的，”她说，“我就亲手把谎言拆开。”"
+            "证词背面的签名让她意识到，上一卷所谓的胜利只是新的代价。"
+            "她把旧印章攥进掌心，带着会撕裂同盟的答案走向电梯。"
+        ),
+    )
 
     response = client.post(
         f"/api/projects/{project['id']}/ai/generate_chapter_draft",
@@ -605,7 +680,7 @@ def test_local_chapter_draft_generates_chapter_specific_prose(monkeypatch, tmp_p
     assert "灰塔回声" in text
     assert "沈照夜" in text
     assert "反噬证词" in text
-    assert len(text) > 500
+    assert len(text) > 120
     assert "。“" in text or "？”" in text or "！”" in text
     outline_like_phrases = [
         "本章目标",
@@ -642,6 +717,14 @@ def test_generation_context_recent_chapters_excludes_current_chapter(monkeypatch
         },
     ).json()
     create_story_prerequisites(client, project["id"], 2, "灰塔门禁")
+    create_default_model_config(client, project["id"])
+    captured: dict[str, str] = {}
+
+    def recent_context_responder(body, _timeout):
+        captured["body"] = body
+        return "第二章正文：主角进入灰塔。"
+
+    mock_remote_chat(monkeypatch, recent_context_responder)
 
     response = client.post(
         f"/api/projects/{project['id']}/ai/generate_chapter_draft",
@@ -649,9 +732,11 @@ def test_generation_context_recent_chapters_excludes_current_chapter(monkeypatch
     )
 
     assert response.status_code == 200
-    text = response.json()["text"]
-    assert "上一章《第1章 第一封信》" in text
-    assert "上一章《第2章 灰塔门禁》" not in text
+    body = captured["body"]
+    assert "第1章 第一封信" in body
+    assert "主角发现写着明天日期的来信" in body
+    assert "recent_chapters" in body
+    assert "第2章 灰塔门禁" in body
 
 
 def test_chapter_draft_requires_saved_characters_and_outline(monkeypatch, tmp_path):
@@ -692,6 +777,32 @@ def test_story_generation_flow_uses_saved_outline_for_distinct_chapter_memory(mo
         f"/api/projects/{project['id']}/chapters",
         json={"chapter_number": 2, "title": "第2章 灰塔证词"},
     ).json()
+    create_default_model_config(client, project["id"])
+
+    def story_flow_responder(body, _timeout):
+        if "generate_characters" in body:
+            return json.dumps({"name": "闻岚", "desire": "追回城市记忆", "notes": "主角"}, ensure_ascii=False)
+        if "generate_outline" in body and "灰塔证词" in body:
+            return json.dumps(
+                {
+                    "chapter_title": "第 2 章 · 灰塔证词",
+                    "key_events": "闻岚在灰塔证词中发现胜利被伪造。",
+                },
+                ensure_ascii=False,
+            )
+        if "generate_outline" in body and "雨夜古籍" in body:
+            return json.dumps(
+                {
+                    "chapter_title": "第 1 章 · 雨夜古籍",
+                    "key_events": "闻岚在雨夜古籍中发现第一道记忆裂缝。",
+                },
+                ensure_ascii=False,
+            )
+        if "第2章 灰塔证词" in body:
+            return "灰塔证词正文：闻岚读到证词，确认上一章的发现正在反噬。"
+        return "雨夜古籍正文：闻岚翻开旧书，记忆裂缝第一次显形。"
+
+    mock_remote_chat(monkeypatch, story_flow_responder)
 
     character_ai = client.post(
         f"/api/projects/{project['id']}/ai/generate_characters",
@@ -886,13 +997,65 @@ def test_model_connection_timeout_reports_local_proxy_layer(monkeypatch, tmp_pat
     assert "上游" in detail
 
 
-def test_local_character_generation_avoids_existing_character_names(monkeypatch, tmp_path):
+def test_xiaomi_mimo_connection_uses_api_key_header_and_completion_tokens(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"title": "MiMo 连接测试"}).json()
+
+    import backend.app.main as main
+
+    captured: dict[str, str] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "OK"}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout=0):
+        captured["api_key_header"] = request.headers.get("Api-key") or request.headers.get("api-key") or ""
+        captured["authorization"] = request.headers.get("Authorization") or ""
+        captured["body"] = request.data.decode("utf-8")
+        return FakeResponse()
+
+    monkeypatch.setattr(main.urllib.request, "urlopen", fake_urlopen)
+
+    response = client.post(
+        f"/api/projects/{project['id']}/ai/test-connection",
+        json={
+            "provider": "Xiaomi MiMo",
+            "api_key": "mimo-key",
+            "base_url": "https://api.xiaomimimo.com/v1",
+            "model_name": "mimo-v2.5-pro",
+            "max_tokens": 32,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["api_key_header"] == "mimo-key"
+    assert captured["authorization"] == ""
+    assert "max_completion_tokens" in captured["body"]
+    assert "max_tokens" not in captured["body"]
+
+
+def test_remote_character_generation_receives_existing_character_names(monkeypatch, tmp_path):
     client = make_client(monkeypatch, tmp_path)
     project = client.post("/api/projects", json={"title": "不重复角色"}).json()
     client.post(
         f"/api/projects/{project['id']}/character-profiles",
         json={"title": "沈照夜", "category": "character", "content": "主角", "payload": {"name": "沈照夜"}},
     )
+    create_default_model_config(client, project["id"])
+    captured: dict[str, str] = {}
+
+    def character_responder(body, _timeout):
+        captured["body"] = body
+        return json.dumps({"name": "顾临舟", "desire": "找出旧朝叛徒"}, ensure_ascii=False)
+
+    mock_remote_chat(monkeypatch, character_responder)
 
     character_ai = client.post(
         f"/api/projects/{project['id']}/ai/generate_characters",
@@ -903,8 +1066,9 @@ def test_local_character_generation_avoids_existing_character_names(monkeypatch,
         },
     ).json()
 
-    assert character_ai["structured"]["name"] != "沈照夜"
-    assert "沈照夜" not in character_ai["text"].split('"name":', 1)[1].split(",", 1)[0]
+    assert character_ai["structured"]["name"] == "顾临舟"
+    assert "沈照夜" in captured["body"]
+    assert "avoid_duplicate_names" in captured["body"]
 
 
 def test_finalize_chapter_extracts_memory_to_structured_records_and_wiki(monkeypatch, tmp_path):
@@ -1071,6 +1235,8 @@ def test_generation_context_lazily_rebuilds_missing_volume_memory(monkeypatch, t
     import backend.app.main as main
 
     create_story_prerequisites(client, project["id"], 2, "第二章 缺失的三分钟")
+    create_default_model_config(client, project["id"])
+    mock_remote_chat(monkeypatch, lambda _body, _timeout: "第二章正文：主角追查缺失的三分钟。")
     main.delete_wiki_page(project["id"], "关键记忆.md")
 
     response = client.post(

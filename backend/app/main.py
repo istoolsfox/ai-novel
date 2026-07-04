@@ -1148,6 +1148,22 @@ def local_proxy_timeout_detail(base_url: str, model: str) -> str:
     )
 
 
+def model_request_headers(provider: str, api_key: str) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if provider.strip().lower() in {"xiaomi mimo", "mimo", "xiaomimimo"}:
+        headers["api-key"] = api_key
+    else:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+def apply_token_limit(request_body: dict[str, Any], provider: str, max_tokens: int) -> None:
+    if provider.strip().lower() in {"xiaomi mimo", "mimo", "xiaomimimo"}:
+        request_body["max_completion_tokens"] = max(1, max_tokens)
+    else:
+        request_body["max_tokens"] = max(1, max_tokens)
+
+
 @app.post("/api/projects/{project_id}/ai/test-connection")
 def test_model_connection(project_id: str, payload: ModelConnectionTestIn) -> dict[str, Any]:
     require_project(project_id)
@@ -1164,12 +1180,12 @@ def test_model_connection(project_id: str, payload: ModelConnectionTestIn) -> di
             {"role": "user", "content": "请只回复 OK。"},
         ],
         "temperature": payload.temperature,
-        "max_tokens": max(1, min(payload.max_tokens or 16, 64)),
     }
+    apply_token_limit(request_body, payload.provider, min(payload.max_tokens or 16, 64))
     request = urllib.request.Request(
         f"{base_url}/chat/completions",
         data=json.dumps(request_body, ensure_ascii=False).encode("utf-8"),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        headers=model_request_headers(payload.provider, api_key),
         method="POST",
     )
     try:
@@ -1680,23 +1696,24 @@ def system_prompt_for_workflow(workflow: str) -> str:
 def run_model_or_stub(project_id: str, workflow: str, payload: AiWorkflowIn, context: dict[str, Any]) -> dict[str, Any]:
     config = resolve_model_config(project_id, workflow)
     if not config:
-        return build_stub_ai_output(
-            workflow,
-            payload,
-            context,
-            f"当前使用本地占位模型：未找到可用于 {workflow} 的远程模型配置。请在设置中保存模型并设为默认，或在任务路由中为该任务选择模型。",
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"未找到可用于 {workflow} 的远程模型配置。"
+                "请在设置中保存 DeepSeek、MiniMax/Mimo 或其他 OpenAI-compatible 模型并设为默认，"
+                "或在任务路由中为该任务选择模型。"
+            ),
         )
 
     config_payload = config.get("payload") if isinstance(config.get("payload"), dict) else {}
+    provider = str(config_payload.get("provider") or config.get("category") or "")
     api_key = str(config_payload.get("api_key") or "")
     base_url = str(config_payload.get("base_url") or "https://api.openai.com/v1").rstrip("/")
     model = str(config_payload.get("model_name") or config.get("title") or "")
     if not api_key or not model:
-        return build_stub_ai_output(
-            workflow,
-            payload,
-            context,
-            f"模型配置“{config.get('title') or '未命名模型'}”缺少 API Key 或 Model Name。",
+        raise HTTPException(
+            status_code=409,
+            detail=f"模型配置“{config.get('title') or '未命名模型'}”缺少 API Key 或 Model Name，无法调用真实大模型。",
         )
 
     remote_payload = compact_payload_for_remote(workflow, payload)
@@ -1715,12 +1732,12 @@ def run_model_or_stub(project_id: str, workflow: str, payload: AiWorkflowIn, con
             },
         ],
         "temperature": float(config_payload.get("temperature") or 0.7),
-        "max_tokens": max_tokens_for_config(config_payload),
     }
+    apply_token_limit(request_body, provider, max_tokens_for_config(config_payload))
     request = urllib.request.Request(
         f"{base_url}/chat/completions",
         data=json.dumps(request_body, ensure_ascii=False).encode("utf-8"),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        headers=model_request_headers(provider, api_key),
         method="POST",
     )
     timeout_seconds = request_timeout_for_workflow(workflow)
@@ -1741,24 +1758,21 @@ def run_model_or_stub(project_id: str, workflow: str, payload: AiWorkflowIn, con
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")[:1000].strip()
         summary = f"HTTP {exc.code}: {detail or exc.reason}"
-        fallback = build_stub_ai_output(workflow, payload, context, "远程模型调用失败。")
-        fallback["status"] = "fallback"
-        fallback["error"] = summary
-        return fallback
-    except TimeoutError as exc:
-        fallback = build_stub_ai_output(workflow, payload, context, "远程模型调用超时。")
-        fallback["status"] = "fallback"
-        fallback["error"] = (
-            f"远程模型仍可能在生成，但 {timeout_seconds} 秒内暂未返回结果。"
-            "这通常不是提示词或网络配置错误；可稍后重试，或通过 AI_NOVEL_GENERATION_TIMEOUT_SECONDS 继续放宽等待时间。"
-            f"原始错误：{exc}"
+        raise HTTPException(status_code=502, detail=f"远程模型调用失败：{summary}") from exc
+    except (TimeoutError, socket.timeout) as exc:
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                f"远程模型 {model} 在 {timeout_seconds} 秒内未返回。"
+                "已停止本次生成，不会回退到本地占位正文。"
+                "可稍后重试，或通过 AI_NOVEL_GENERATION_TIMEOUT_SECONDS 放宽等待时间。"
+            ),
+        ) from exc
+    except (urllib.error.URLError, KeyError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"远程模型调用失败：{exc}。已停止本次生成，不会回退到本地占位正文。",
         )
-        return fallback
-    except (urllib.error.URLError, KeyError, json.JSONDecodeError, TimeoutError) as exc:
-        fallback = build_stub_ai_output(workflow, payload, context, "远程模型调用失败。")
-        fallback["status"] = "fallback"
-        fallback["error"] = str(exc)
-        return fallback
 
 
 def resolve_model_config(project_id: str, workflow: str) -> dict[str, Any] | None:
