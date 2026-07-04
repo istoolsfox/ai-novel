@@ -1,6 +1,0 @@
-{
-  "private": true,
-  "scripts": {
-    "build": "cd frontend && npm install && npm run build && cd .. && rm -rf dist && cp -R frontend/dist dist"
-  }
-}

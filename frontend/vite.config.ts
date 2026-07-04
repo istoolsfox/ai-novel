@@ -1,18 +1,15 @@
-import { defineConfig } from "vite";
-import vue from "@vitejs/plugin-vue";
-
-const isTauri = process.env.VITE_TAURI === "true";
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  plugins: [vue()],
-  base: isTauri ? "./" : "/",
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+  },
   server: {
     proxy: {
-      "/api": "http://127.0.0.1:8000",
+      '/api': 'http://127.0.0.1:8000',
     },
-  },
-  build: {
-    sourcemap: !isTauri,
-    outDir: "dist",
   },
 });

@@ -1,5 +1,0 @@
-name = "ai-novel"
-compatibility_date = "2026-07-04"
-pages_build_output_dir = "frontend/dist"
-
-# Cloudflare Pages uses this file to locate the static build output.
