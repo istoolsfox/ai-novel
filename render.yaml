@@ -2,7 +2,7 @@ services:
   - type: web
     name: ai-novel
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: |
       python -m pip install --upgrade pip
       python -m pip install -r backend/requirements.txt
@@ -12,14 +12,10 @@ services:
     startCommand: python -m uvicorn backend.app.interfaces.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: AI_NOVEL_DATA_DIR
-        value: /var/data
+        value: /tmp/ai-novel-data
       - key: AI_NOVEL_DATABASE_URL
-        value: sqlite:////var/data/app.db
+        value: sqlite:////tmp/ai-novel-data/app.db
       - key: AI_NOVEL_MODEL_TIMEOUT_SECONDS
         value: "120"
       - key: AI_NOVEL_GENERATION_TIMEOUT_SECONDS
         value: "900"
-    disk:
-      name: ai-novel-data
-      mountPath: /var/data
-      sizeGB: 1
