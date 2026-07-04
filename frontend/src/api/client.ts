@@ -11,12 +11,18 @@ function isTauri(): boolean {
   );
 }
 
+function configuredApiBase(): string {
+  const value = import.meta.env.VITE_API_BASE_URL;
+  if (typeof value !== "string" || !value.trim()) return "";
+  return value.trim().replace(/\/$/, "");
+}
+
 let _apiBaseCache = "";
 
 /**
  * 异步获取 API base URL：
  * - Tauri 模式：通过 invoke('get_sidecar_port') 获取 sidecar 端口
- * - Web 模式：同源（通过 vite proxy 转发到 8000）
+ * - Web 模式：默认同源；如果配置了 VITE_API_BASE_URL，则请求外部后端
  */
 export async function getApiBase(): Promise<string> {
   if (_apiBaseCache) return _apiBaseCache;
@@ -31,7 +37,7 @@ export async function getApiBase(): Promise<string> {
       _apiBaseCache = "http://127.0.0.1:8000";
     }
   } else {
-    _apiBaseCache = "";
+    _apiBaseCache = configuredApiBase();
   }
   return _apiBaseCache;
 }
@@ -41,7 +47,7 @@ export async function getApiBase(): Promise<string> {
  * 用于 SSE 等需要同步 URL 的场景。
  */
 export function getApiBaseSync(): string {
-  return _apiBaseCache;
+  return _apiBaseCache || configuredApiBase();
 }
 
 /**
