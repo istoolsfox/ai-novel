@@ -1,7 +1,7 @@
 """应用层 · 上下文装配与压缩。
 
 从 main.py 迁出，包含：
-- build_generation_context：装配生成上下文（章节/卷记忆/角色/大纲/伏笔/情感种子/衔接包）
+- build_generation_context：装配生成上下文（章节/卷记忆/角色/大纲/伏笔/情感种子/衔接包/章节全文页）
 - trim_text / compact_value / compact_record 等压缩工具
 - compact_payload_for_remote / max_tokens_for_config / request_timeout_for_workflow
 """
@@ -17,7 +17,6 @@ from ..infrastructure.database import (
     row_to_dict,
     rows_to_dicts,
 )
-from ..infrastructure.storage import require_project
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +68,42 @@ def build_generation_context(project_id: str, chapter_id: str = "") -> dict[str,
                 (project_id,),
             ).fetchall()
         )
+        chapter_memory_pages = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT path, title, content
+                FROM wiki_pages
+                WHERE project_id = ? AND path LIKE 'chapters/chapter-%.md'
+                ORDER BY path DESC
+                LIMIT 4
+                """,
+                (project_id,),
+            ).fetchall()
+        )
+        bridge_memory_pages = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT path, title, content
+                FROM wiki_pages
+                WHERE project_id = ? AND path LIKE 'bridges/chapter-%-bridge.md'
+                ORDER BY path DESC
+                LIMIT 4
+                """,
+                (project_id,),
+            ).fetchall()
+        )
+        chapter_index_page = row_to_dict(
+            conn.execute(
+                "SELECT path, title, content FROM wiki_pages WHERE project_id = ? AND path = 'chapters/index.md'",
+                (project_id,),
+            ).fetchone()
+        )
+        bridge_index_page = row_to_dict(
+            conn.execute(
+                "SELECT path, title, content FROM wiki_pages WHERE project_id = ? AND path = 'bridges/index.md'",
+                (project_id,),
+            ).fetchone()
+        )
         volume_memory = row_to_dict(
             conn.execute(
                 "SELECT path, title, content FROM wiki_pages WHERE project_id = ? AND path = ?",
@@ -105,6 +140,10 @@ def build_generation_context(project_id: str, chapter_id: str = "") -> dict[str,
         "taboo_rules": list_records_for_context(project_id, "taboo-rules"),
         "knowledge": list_records_for_context(project_id, "knowledge-documents"),
         "wiki_pages": wiki_pages,
+        "chapter_memory_pages": chapter_memory_pages,
+        "bridge_memory_pages": bridge_memory_pages,
+        "chapter_index_page": chapter_index_page,
+        "bridge_index_page": bridge_index_page,
         "emotion_seed": emotion_seed,
         "prev_chapter_bridge": prev_bridge,
     }
@@ -160,6 +199,16 @@ def compact_chapter_for_prompt(chapter: dict[str, Any] | None) -> dict[str, Any]
     }
 
 
+def compact_wiki_page(page: dict[str, Any] | None, limit: int = 1200) -> dict[str, Any] | None:
+    if not isinstance(page, dict):
+        return None
+    return {
+        "path": page.get("path", ""),
+        "title": page.get("title", ""),
+        "content": trim_text(page.get("content", ""), limit),
+    }
+
+
 def compact_generation_context(context: dict[str, Any]) -> dict[str, Any]:
     # 情感种子压缩
     emotion_seed = context.get("emotion_seed")
@@ -197,15 +246,19 @@ def compact_generation_context(context: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "chapter": compact_chapter_for_prompt(context.get("chapter")),
-        "volume_memory": (
-            {
-                "path": context["volume_memory"].get("path", ""),
-                "title": context["volume_memory"].get("title", ""),
-                "content": trim_text(context["volume_memory"].get("content", ""), 2600),
-            }
-            if isinstance(context.get("volume_memory"), dict)
-            else None
-        ),
+        "volume_memory": compact_wiki_page(context.get("volume_memory"), 2600),
+        "chapter_index_page": compact_wiki_page(context.get("chapter_index_page"), 1600),
+        "bridge_index_page": compact_wiki_page(context.get("bridge_index_page"), 1600),
+        "recent_chapter_pages": [
+            compact_wiki_page(page, 2200)
+            for page in (context.get("chapter_memory_pages") or [])[:4]
+            if isinstance(page, dict)
+        ],
+        "recent_bridge_pages": [
+            compact_wiki_page(page, 1600)
+            for page in (context.get("bridge_memory_pages") or [])[:4]
+            if isinstance(page, dict)
+        ],
         "anti_repetition_notes": trim_text(context.get("anti_repetition_notes", ""), 1000),
         "recent_chapters": [
             {
@@ -227,11 +280,7 @@ def compact_generation_context(context: dict[str, Any]) -> dict[str, Any]:
         "taboo_rules": [compact_record(record, 500) for record in (context.get("taboo_rules") or [])[:16] if isinstance(record, dict)],
         "knowledge": [compact_record(record, 700) for record in (context.get("knowledge") or [])[:8] if isinstance(record, dict)],
         "wiki_pages": [
-            {
-                "path": page.get("path", ""),
-                "title": page.get("title", ""),
-                "content": trim_text(page.get("content", ""), 1000),
-            }
+            compact_wiki_page(page, 1000)
             for page in (context.get("wiki_pages") or [])[:8]
             if isinstance(page, dict)
         ],
