@@ -1,3 +1,4 @@
+# Website smoke test branch.
 services:
   - type: web
     name: ai-novel
