@@ -1,0 +1,17 @@
+services:
+  ai-novel:
+    build: .
+    container_name: ai-novel
+    ports:
+      - "8000:8000"
+    environment:
+      AI_NOVEL_DATABASE_URL: sqlite:////data/app.db
+      AI_NOVEL_PROJECTS_DIR: /data/projects
+      AI_NOVEL_MODEL_TIMEOUT_SECONDS: "120"
+      AI_NOVEL_GENERATION_TIMEOUT_SECONDS: "900"
+    volumes:
+      - ai_novel_data:/data
+    restart: unless-stopped
+
+volumes:
+  ai_novel_data:
