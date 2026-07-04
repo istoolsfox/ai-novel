@@ -1,15 +1,23 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
   NCard, NGrid, NGridItem, NStatistic, NSpace, NTag, NEmpty, NButton,
   NText, NCollapse, NCollapseItem, NDescriptions, NDescriptionsItem,
   NProgress,
 } from "naive-ui";
-import { jobApi, emotionApi, chapterApi } from "../api";
-import type { GenerationJob, StepRecord, Chapter, ChapterBridge, ChapterQualityScore } from "../api/types";
+import { jobApi, emotionApi, chapterApi, exportApi } from "../api";
+import type {
+  GenerationJob,
+  StepRecord,
+  Chapter,
+  ChapterBridge,
+  ChapterQualityScore,
+  ExportManifest,
+} from "../api/types";
 
 const route = useRoute();
+const router = useRouter();
 const projectId = computed(() => route.params.projectId as string);
 const jobId = computed(() => route.params.jobId as string);
 
@@ -18,12 +26,18 @@ const steps = ref<StepRecord[]>([]);
 const chapters = ref<Chapter[]>([]);
 const bridges = ref<ChapterBridge[]>([]);
 const qualityScores = ref<Record<string, ChapterQualityScore | null>>({});
+const manifest = ref<ExportManifest | null>(null);
 
 onMounted(async () => {
   job.value = await jobApi.get(projectId.value, jobId.value);
   steps.value = await jobApi.listSteps(projectId.value, jobId.value);
   chapters.value = await chapterApi.list(projectId.value);
   bridges.value = await emotionApi.listBridges(projectId.value);
+  try {
+    manifest.value = await exportApi.manifest(projectId.value);
+  } catch {
+    manifest.value = null;
+  }
   const scoreEntries = await Promise.all(
     chapters.value.map(async (chapter) => {
       const scores = await chapterApi.listQualityScores(projectId.value, chapter.id);
@@ -55,6 +69,21 @@ const averageQualityScore = computed(() => {
   const scored = chapters.value.filter((chapter) => chapter.quality_score > 0);
   if (!scored.length) return 0;
   return Math.round(scored.reduce((sum, chapter) => sum + chapter.quality_score, 0) / scored.length);
+});
+
+const deliverabilityIssues = computed(() => {
+  if (!manifest.value) return [];
+  const issues: string[] = [];
+  if (manifest.value.missing_chapter_numbers.length) {
+    issues.push(`缺失 ${manifest.value.missing_chapter_numbers.length} 章`);
+  }
+  if (manifest.value.unfinished_chapters.length) {
+    issues.push(`${manifest.value.unfinished_chapters.length} 章未定稿`);
+  }
+  if (manifest.value.low_quality_chapters.length) {
+    issues.push(`${manifest.value.low_quality_chapters.length} 章质量偏低`);
+  }
+  return issues;
 });
 
 function qualityTagType(score?: number) {
@@ -96,6 +125,47 @@ function qualityIssues(score?: ChapterQualityScore | null) {
         </NCard>
       </NGridItem>
     </NGrid>
+
+    <NCard title="交付状态" style="margin-bottom: 16px">
+      <NEmpty v-if="!manifest" description="暂无导出检查结果" />
+      <NSpace v-else vertical size="small">
+        <NSpace align="center" justify="space-between">
+          <NSpace align="center">
+            <NTag :type="manifest.deliverable ? 'success' : 'warning'" size="large">
+              {{ manifest.deliverable ? "可交付" : "需处理后交付" }}
+            </NTag>
+            <NText depth="3">
+              {{ manifest.final_chapter_count }} / {{ manifest.target_chapter_count }} 章定稿，
+              {{ manifest.total_words }} 字，平均质量 {{ manifest.average_quality_score }} 分
+            </NText>
+          </NSpace>
+          <NButton type="primary" ghost @click="router.push({ name: 'Export', params: { projectId } })">
+            打开导出
+          </NButton>
+        </NSpace>
+        <NSpace v-if="deliverabilityIssues.length" size="small">
+          <NTag
+            v-for="issue in deliverabilityIssues"
+            :key="issue"
+            type="warning"
+            size="small"
+          >
+            {{ issue }}
+          </NTag>
+        </NSpace>
+        <NSpace v-if="manifest.missing_chapter_numbers.length" size="small">
+          <NText depth="3">缺失章节</NText>
+          <NTag
+            v-for="num in manifest.missing_chapter_numbers"
+            :key="num"
+            type="error"
+            size="small"
+          >
+            第 {{ num }} 章
+          </NTag>
+        </NSpace>
+      </NSpace>
+    </NCard>
 
     <!-- 自动质量报告 -->
     <NCard title="章节质量报告" style="margin-bottom: 16px">
