@@ -65,8 +65,8 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-  docker:
-    name: Docker build
+  website:
+    name: Website smoke test
     runs-on: ubuntu-latest
     needs:
       - backend
@@ -75,5 +75,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build deployment image
-        run: docker build -t ai-novel-ci:latest .
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Build frontend assets
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
+
+      - name: Start web service and check website
+        env:
+          AI_NOVEL_DATA_DIR: ${{ runner.temp }}/ai-novel-data
+          AI_NOVEL_DATABASE_URL: sqlite:///${{ runner.temp }}/ai-novel-web.db
+        run: |
+          python -m uvicorn backend.app.interfaces.main:app --host 127.0.0.1 --port 8000 > /tmp/ai-novel.log 2>&1 &
+          echo $! > /tmp/ai-novel.pid
+          sleep 5
+          curl -f http://127.0.0.1:8000/api/health
+          curl -f http://127.0.0.1:8000/ | grep -E "<div id=\"app\"></div>|<!doctype html|<!DOCTYPE html"
+          kill $(cat /tmp/ai-novel.pid)
