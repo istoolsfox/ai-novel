@@ -59,7 +59,7 @@ app.include_router(resources.router)  # 通用资源路由最后注册（catch-a
 
 
 def _frontend_dist_dir() -> Path:
-    return Path(__file__).resolve().parents[4] / "frontend" / "dist"
+    return Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
 
 frontend_dist = _frontend_dist_dir()
