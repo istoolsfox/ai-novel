@@ -7,7 +7,17 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from ...domain.models import ChapterIn, VersionIn
-from ...infrastructure.database import connect, new_id, row_to_dict, rows_to_dicts, utc_now
+from ...engine.quality import build_chapter_quality_report
+from ...infrastructure.database import (
+    connect,
+    create_chapter_quality_score,
+    get_chapter_bridge,
+    list_chapter_quality_scores,
+    new_id,
+    row_to_dict,
+    rows_to_dicts,
+    utc_now,
+)
 from ...infrastructure.storage import project_root, require_project
 from ..dependencies import require_chapter
 from ...application.memory_service import (
@@ -71,6 +81,12 @@ def list_chapters(project_id: str) -> list[dict[str, Any]]:
 @router.get("/{chapter_id}")
 def get_chapter(project_id: str, chapter_id: str) -> dict[str, Any]:
     return require_chapter(project_id, chapter_id)
+
+
+@router.get("/{chapter_id}/quality-scores")
+def list_quality_scores(project_id: str, chapter_id: str) -> list[dict[str, Any]]:
+    require_chapter(project_id, chapter_id)
+    return list_chapter_quality_scores(project_id, chapter_id)
 
 
 @router.patch("/{chapter_id}")
@@ -198,4 +214,19 @@ def finalize_chapter(project_id: str, chapter_id: str) -> dict[str, Any]:
         auto_generate_bridge(project_id, updated)
     except Exception:
         pass  # 衔接包生成失败不阻断定稿
-    return updated
+    _score_chapter(project_id, updated)
+    with connect() as conn:
+        refreshed = row_to_dict(conn.execute("SELECT * FROM chapters WHERE id = ?", (chapter_id,)).fetchone())
+    return refreshed or updated
+
+
+def _score_chapter(project_id: str, chapter: dict[str, Any]) -> None:
+    with connect() as conn:
+        project = row_to_dict(
+            conn.execute("SELECT target_chapter_count FROM projects WHERE id = ?", (project_id,)).fetchone()
+        ) or {}
+    target_count = int(project.get("target_chapter_count") or 0)
+    is_final_chapter = bool(target_count and int(chapter.get("chapter_number") or 0) >= target_count)
+    bridge = get_chapter_bridge(project_id, chapter["id"])
+    report = build_chapter_quality_report(chapter, bridge, is_final_chapter=is_final_chapter)
+    create_chapter_quality_score(project_id, chapter["id"], report)

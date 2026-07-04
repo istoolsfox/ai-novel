@@ -892,6 +892,11 @@ def test_finalize_chapter_extracts_memory_to_structured_records_and_wiki(monkeyp
     finalized = client.post(f"/api/projects/{project['id']}/chapters/{chapter['id']}/finalize")
 
     assert finalized.status_code == 200
+    assert "quality_score" in finalized.json()
+    scores = client.get(f"/api/projects/{project['id']}/chapters/{chapter['id']}/quality-scores")
+    assert scores.status_code == 200
+    assert len(scores.json()) == 1
+    assert "metrics" in scores.json()[0]["payload"]
     timeline = client.get(f"/api/projects/{project['id']}/timeline-events").json()
     foreshadowings = client.get(f"/api/projects/{project['id']}/foreshadowings").json()
     assert timeline
@@ -1559,6 +1564,9 @@ def test_pure_hosted_generation_can_finish_15_chapters_and_export_closed_story(m
     assert final_score_payload["metrics"]["is_final_chapter"] is True
     assert final_score_payload["metrics"]["open_hook_count"] == 0
     assert final_score_payload["ok"] is True
+    score_endpoint = client.get(f"/api/projects/{project['id']}/chapters/{chapters[-1]['id']}/quality-scores")
+    assert score_endpoint.status_code == 200
+    assert score_endpoint.json()[0]["payload"]["metrics"]["is_final_chapter"] is True
 
 
 def test_autopilot_prepares_bare_project_and_starts_hosted_generation(monkeypatch, tmp_path):

@@ -7,6 +7,7 @@ import type {
   Chapter,
   ChapterInput,
   ChapterVersion,
+  ChapterQualityScore,
   VersionInput,
   Blueprint,
   BlueprintInput,
@@ -56,6 +57,10 @@ export const chapterApi = {
     api.delete<{ ok: boolean }>(`/api/projects/${projectId}/chapters/${chapterId}`),
   finalize: (projectId: string, chapterId: string) =>
     api.post<Chapter>(`/api/projects/${projectId}/chapters/${chapterId}/finalize`),
+  listQualityScores: (projectId: string, chapterId: string) =>
+    api.get<ChapterQualityScore[]>(
+      `/api/projects/${projectId}/chapters/${chapterId}/quality-scores`,
+    ),
   // 版本管理
   listVersions: (projectId: string, chapterId: string) =>
     api.get<ChapterVersion[]>(

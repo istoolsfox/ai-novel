@@ -843,6 +843,16 @@ def create_chapter_quality_score(project_id: str, chapter_id: str, report: dict[
         return row_to_dict(conn.execute("SELECT * FROM chapter_scores WHERE id = ?", (score_id,)).fetchone())
 
 
+def list_chapter_quality_scores(project_id: str, chapter_id: str) -> list[dict[str, Any]]:
+    with connect() as conn:
+        return rows_to_dicts(
+            conn.execute(
+                "SELECT * FROM chapter_scores WHERE project_id = ? AND chapter_id = ? ORDER BY created_at DESC",
+                (project_id, chapter_id),
+            ).fetchall()
+        )
+
+
 def get_recent_reader_pull_reports(project_id: str, count: int = 3) -> list[dict[str, Any]]:
     with connect() as conn:
         return rows_to_dicts(

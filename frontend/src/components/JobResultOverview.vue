@@ -4,9 +4,10 @@ import { useRoute } from "vue-router";
 import {
   NCard, NGrid, NGridItem, NStatistic, NSpace, NTag, NEmpty, NButton,
   NText, NCollapse, NCollapseItem, NDescriptions, NDescriptionsItem,
+  NProgress,
 } from "naive-ui";
 import { jobApi, emotionApi, chapterApi } from "../api";
-import type { GenerationJob, StepRecord, Chapter, ChapterBridge } from "../api/types";
+import type { GenerationJob, StepRecord, Chapter, ChapterBridge, ChapterQualityScore } from "../api/types";
 
 const route = useRoute();
 const projectId = computed(() => route.params.projectId as string);
@@ -16,12 +17,20 @@ const job = ref<GenerationJob | null>(null);
 const steps = ref<StepRecord[]>([]);
 const chapters = ref<Chapter[]>([]);
 const bridges = ref<ChapterBridge[]>([]);
+const qualityScores = ref<Record<string, ChapterQualityScore | null>>({});
 
 onMounted(async () => {
   job.value = await jobApi.get(projectId.value, jobId.value);
   steps.value = await jobApi.listSteps(projectId.value, jobId.value);
   chapters.value = await chapterApi.list(projectId.value);
   bridges.value = await emotionApi.listBridges(projectId.value);
+  const scoreEntries = await Promise.all(
+    chapters.value.map(async (chapter) => {
+      const scores = await chapterApi.listQualityScores(projectId.value, chapter.id);
+      return [chapter.id, scores[0] || null] as const;
+    }),
+  );
+  qualityScores.value = Object.fromEntries(scoreEntries);
 });
 
 const totalWords = computed(() =>
@@ -29,18 +38,36 @@ const totalWords = computed(() =>
 );
 
 const completedSteps = computed(() =>
-  steps.value.filter((s) => s.status === "done"),
+  steps.value.filter((s) => s.step_status === "completed" || s.status === "done"),
 );
 
 const stepDurations = computed(() => {
   const map: Record<string, number> = {};
   for (const s of steps.value) {
-    if (s.status === "done" && s.duration_ms) {
+    if ((s.step_status === "completed" || s.status === "done") && s.duration_ms) {
       map[s.step_name] = (map[s.step_name] || 0) + s.duration_ms;
     }
   }
   return map;
 });
+
+const averageQualityScore = computed(() => {
+  const scored = chapters.value.filter((chapter) => chapter.quality_score > 0);
+  if (!scored.length) return 0;
+  return Math.round(scored.reduce((sum, chapter) => sum + chapter.quality_score, 0) / scored.length);
+});
+
+function qualityTagType(score?: number) {
+  if (!score) return "default";
+  if (score >= 85) return "success";
+  if (score >= 70) return "warning";
+  return "error";
+}
+
+function qualityIssues(score?: ChapterQualityScore | null) {
+  const issues = score?.payload?.issues;
+  return Array.isArray(issues) ? issues : [];
+}
 </script>
 
 <template>
@@ -69,6 +96,72 @@ const stepDurations = computed(() => {
         </NCard>
       </NGridItem>
     </NGrid>
+
+    <!-- 自动质量报告 -->
+    <NCard title="章节质量报告" style="margin-bottom: 16px">
+      <NEmpty v-if="chapters.length === 0" description="暂无章节" />
+      <div v-else>
+        <NSpace align="center" style="margin-bottom: 14px">
+          <NText depth="3">平均质量分</NText>
+          <NProgress
+            type="line"
+            :percentage="averageQualityScore"
+            :status="averageQualityScore >= 85 ? 'success' : averageQualityScore >= 70 ? 'warning' : 'error'"
+            style="width: 220px"
+          />
+        </NSpace>
+        <NCollapse>
+          <NCollapseItem
+            v-for="chapter in chapters"
+            :key="chapter.id"
+            :title="`第 ${chapter.chapter_number} 章 · ${chapter.title || '未命名'} · ${chapter.quality_score || 0} 分`"
+            :name="chapter.id"
+          >
+            <NSpace vertical size="small">
+              <NSpace align="center">
+                <NTag :type="qualityTagType(chapter.quality_score)" size="small">
+                  {{ chapter.quality_score || 0 }} 分
+                </NTag>
+                <NTag
+                  v-if="qualityScores[chapter.id]?.payload?.metrics?.is_final_chapter"
+                  type="info"
+                  size="small"
+                >
+                  终章
+                </NTag>
+                <NTag
+                  v-if="qualityScores[chapter.id]?.payload?.metrics?.open_hook_count"
+                  type="warning"
+                  size="small"
+                >
+                  未回收钩子 {{ qualityScores[chapter.id]?.payload?.metrics?.open_hook_count }}
+                </NTag>
+              </NSpace>
+              <NDescriptions :column="3" size="small" label-placement="left">
+                <NDescriptionsItem label="字数">{{ chapter.word_count }}</NDescriptionsItem>
+                <NDescriptionsItem label="重复片段">
+                  {{ qualityScores[chapter.id]?.payload?.metrics?.repeated_fragment_count ?? 0 }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="报告状态">
+                  {{ qualityScores[chapter.id]?.payload?.ok ? "通过" : "需关注" }}
+                </NDescriptionsItem>
+              </NDescriptions>
+              <div v-if="qualityIssues(qualityScores[chapter.id]).length" class="issue-list">
+                <NTag
+                  v-for="issue in qualityIssues(qualityScores[chapter.id])"
+                  :key="issue"
+                  type="error"
+                  size="small"
+                >
+                  {{ issue }}
+                </NTag>
+              </div>
+              <NText v-else depth="3">没有发现明显烂尾、占位符或正文结构风险。</NText>
+            </NSpace>
+          </NCollapseItem>
+        </NCollapse>
+      </div>
+    </NCard>
 
     <!-- 衔接包链 -->
     <NCard title="衔接包链" style="margin-bottom: 16px">

@@ -45,6 +45,7 @@ export interface Chapter {
   word_count: number;
   status: string;
   selected_version_id: string;
+  quality_score: number;
   created_at: string;
   updated_at: string;
 }
@@ -67,6 +68,21 @@ export interface ChapterVersion {
   content: string;
   model: string;
   context_summary: string;
+  created_at: string;
+}
+
+export interface ChapterQualityScore {
+  id: string;
+  project_id: string;
+  chapter_id: string;
+  total_score: number;
+  payload: {
+    ok?: boolean;
+    issues?: string[];
+    metrics?: Record<string, any>;
+    repeated_fragments?: string[];
+    [key: string]: any;
+  };
   created_at: string;
 }
 
