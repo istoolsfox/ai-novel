@@ -9,3 +9,5 @@ VITE_STATIC_DEMO = "true"
 
 [context.production.environment]
 VITE_STATIC_DEMO = "true"
+
+# CI smoke branch marker for static demo build rerun.
