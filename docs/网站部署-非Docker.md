@@ -16,6 +16,28 @@ AI_NOVEL_DATABASE_URL=sqlite:////tmp/ai-novel-data/app.db
 
 需要注意：免费模式没有持久化磁盘，服务休眠、重启或重新部署后，SQLite 数据库、项目文件、章节正文和 llmwiki 可能丢失。所以它适合“上线功能测试”，不适合长期保存小说项目。
 
+## Cloudflare 域名接入
+
+如果你想用自己的域名访问网站，建议让 Cloudflare 负责域名解析 / HTTPS / CDN，实际应用仍然跑在 Render Free Web Service 上。
+
+详细步骤见：
+
+```text
+docs/Cloudflare域名部署.md
+```
+
+推荐结构：
+
+```text
+用户访问你的域名
+  ↓
+Cloudflare DNS / HTTPS
+  ↓
+Render Free Web Service
+  ↓
+FastAPI 后端托管 Vue 前端 + API
+```
+
 ## 推荐方案
 
 使用 Render / Railway 这类 Web Service 平台，把 FastAPI 后端和 Vue 前端放在同一个服务里运行：
@@ -116,6 +138,6 @@ bridges/index.md
 
 ## 重要提醒
 
-如果只是部署到 Netlify 这类静态站点，前端页面可以打开，但 FastAPI 后端、SQLite、llmwiki、托管生成任务和导出功能都无法完整运行。因此现阶段不建议只做静态部署。
+如果只是部署到 Netlify / Cloudflare Pages 这类静态站点，前端页面可以打开，但 FastAPI 后端、SQLite、llmwiki、托管生成任务和导出功能都无法完整运行。因此现阶段不建议只做静态部署。
 
 要测试完整功能，必须部署为 Web Service。也就是：网站页面和 `/api` 后端在同一个服务里运行。
