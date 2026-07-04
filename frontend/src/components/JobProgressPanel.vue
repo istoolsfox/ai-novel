@@ -91,6 +91,10 @@ const logLines = computed(() =>
           return `[${time}] ⚠️ 智能停: ${e.reason}`;
         case "error":
           return `[${time}] ❌ 错误: ${e.message}`;
+        case "auto_export_completed":
+          return `[${time}] 📦 自动导出完成，可在导出页查看交付文件`;
+        case "auto_export_failed":
+          return `[${time}] ⚠️ 自动导出失败: ${e.error || e.message || "未知错误"}`;
         case "done":
           return `[${time}] 🎉 全部完成`;
         default:

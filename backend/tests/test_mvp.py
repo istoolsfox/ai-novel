@@ -1886,6 +1886,7 @@ def test_autopilot_prepares_bare_project_and_starts_hosted_generation(monkeypatc
 
 def test_generation_job_auto_exports_when_enabled(monkeypatch, tmp_path):
     import time
+    from backend.app.engine.orchestrator import consume_events
 
     client = make_client(monkeypatch, tmp_path)
     project = client.post(
@@ -1922,3 +1923,7 @@ def test_generation_job_auto_exports_when_enabled(monkeypatch, tmp_path):
     manifest = json.loads((export_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["deliverable"] is True
     assert manifest["chapter_count"] == 2
+    events = consume_events(job["id"], 0)
+    auto_export_events = [event for event in events if event["type"] == "auto_export_completed"]
+    assert auto_export_events
+    assert auto_export_events[-1]["manifest"]["deliverable"] is True
