@@ -1,40 +1,43 @@
 # AI 小说创作平台 · 全流程托管情感深度版
 
-> 本地优先的 AI 长篇小说生成桌面应用。核心差异化是**情感感染力**——文字富含深意，区别于纯爽感导向和纯工程导向的工具。
+> 面向长篇小说的 AI 托管生成工作台。核心差异化是**自动化流程 + 情感感染力 + llmwiki 记忆闭环**：用户只需要给出项目设定，系统自动准备大纲、角色、关系、情感约束和章节衔接，再托管生成正文。
 
 ## ✨ 核心特性
 
-- **九步管线托管生成**：启动后全自动跑完，仅检查点/熔断暂停
-- **情感考古架构**：种子 → 自由生长 → 三视角考古（潜意识/读者体感/母题回响）→ 加深·藏回
-- **垂直五层情感模型**：表层 → 情感层 → 意层 → 潜层 → 韵层
-- **对话潜台词挖掘**：四层（表层台词 / 语气层 / 未尽之言 / 动机泄露）
-- **追读力系统**：情感钩子 > 情节钩子，情感债务追踪与兑现
-- **角色声纹库**：注入 → 检查 → 回写闭环，保证人物对话一致性
-- **叙事记忆**：考古发现横向注入下一章种子，实现跨章情感沉积
-- **AI 蓝图自动生成**：根据项目设定生成完整卷蓝图（情感气候/伏笔规划/角色弧线）
-- **断点续跑**：中断后恢复不重跑已完成步骤
-- **桌面化打包**：Tauri 2.0 + PyInstaller sidecar，可独立分发
+- **一键托管生成**：自动补齐故事资产后启动后台任务，支持 SSE 实时进度
+- **故事资产链路**：项目设定 → 章节大纲 → 角色档案 → 角色关系 → 关系画布 → llmwiki
+- **llmwiki 记忆闭环**：角色、关系、大纲、时间线、关键记忆、章节衔接包持续写入 wiki
+- **角色关系画布**：前端用 ECharts 展示人物关系，wiki 同步 Mermaid + Graph JSON
+- **九步章节管线**：brief → seed → draft → dialogue → archaeology → reader_pull → deepen → anti_ai → finalize
+- **情感托管生成**：用户不需要逐章说明情绪，系统自动生成情感种子、情感考古、加深·藏回
+- **章节衔接包**：每章末尾自动记录下一章必须承接的末尾状态、未决钩子和情感余波
+- **反断裂机制**：下一章上下文自动注入上一章衔接包，避免突然跳场、重复揭示和情绪断层
+- **断点续跑**：中断后恢复时跳过已完成章节步骤
+- **部署优先，打包后置**：当前支持 Docker 部署上线，后续保留 Tauri + PyInstaller 桌面打包路线
 
 ## 🏗️ 架构总览
 
-```
+```text
 ┌─────────────────────────────────────────────┐
-│  Vue 3 + Naive UI 前端（SSE 实时进度）       │
+│  Vue 3 + Naive UI + ECharts 前端              │
+│  角色关系画布 / 托管生成 / llmwiki / 导出       │
 └──────────────────┬──────────────────────────┘
                    │ fetch / SSE
 ┌──────────────────▼──────────────────────────┐
 │  FastAPI 后端（DDD 分层）                    │
 │  ├── interfaces/   路由层                   │
 │  ├── application/  用例层                   │
-│  ├── engine/       引擎（管线+调度+熔断）     │
-│  ├── workflows/    工作流（含 LLM 客户端）     │
-│  ├── domain/       领域模型                  │
-│  ├── infrastructure/  数据库+存储            │
-│  └── prompt_packages/  YAML 提示词包         │
+│  │   ├── autopilot_service.py               │
+│  │   └── story_asset_service.py             │
+│  ├── engine/       九步管线 + Orchestrator    │
+│  ├── workflows/    LLM 客户端 + 本地 stub      │
+│  ├── domain/       Pydantic 模型             │
+│  ├── infrastructure/  SQLite + 存储           │
+│  └── prompt_packages/  YAML 提示词包          │
 └──────────────────┬──────────────────────────┘
                    │ 文件 I/O
 ┌──────────────────▼──────────────────────────┐
-│  SQLite (WAL) + 项目文件系统                  │
+│  SQLite + 项目文件系统 + llmwiki             │
 └─────────────────────────────────────────────┘
 ```
 
@@ -42,19 +45,47 @@
 
 | 层 | 技术 |
 |---|---|
-| 后端 | FastAPI + SQLite (WAL) + Python 3.13 |
+| 后端 | FastAPI + SQLite + Python 3.13 |
 | 前端 | Vue 3 + Naive UI + ECharts + TypeScript + Vite |
-| 桌面 | Tauri 2.0 + PyInstaller sidecar |
-| 提示词 | YAML 配置包（代码与提示词分离） |
+| AI 接口 | OpenAI 兼容 Chat Completions API |
+| 提示词 | YAML 配置包 + prompt-template 记录 |
+| 部署 | Docker / Docker Compose |
+| 桌面 | Tauri 2.0 + PyInstaller sidecar（后续） |
+
+## 🔁 托管生成流程
+
+```text
+项目设定
+  ↓
+自动补齐章节大纲
+  ↓
+自动生成角色档案并写入 llmwiki
+  ↓
+自动生成角色关系并同步关系画布
+  ↓
+写入情感托管约束和 prompt skills
+  ↓
+启动九步章节管线
+  ↓
+每章定稿后写入时间线、关键记忆、章节衔接包
+  ↓
+下一章读取上一章衔接包，承接末尾状态、情感余波和未决钩子
+```
+
+托管入口：
+
+```text
+POST /api/projects/{project_id}/jobs/autopilot
+```
 
 ## 📁 目录结构
 
-```
+```text
 ai-novel/
 ├── backend/
 │   ├── app/
 │   │   ├── interfaces/        # FastAPI 路由
-│   │   ├── application/       # 业务用例
+│   │   ├── application/       # 业务用例、托管生成、llmwiki 同步
 │   │   ├── engine/            # 九步管线 + Orchestrator
 │   │   ├── workflows/         # 生成工作流 + LLM 客户端
 │   │   ├── domain/            # Pydantic 模型
@@ -62,18 +93,12 @@ ai-novel/
 │   │   └── prompt_packages/   # YAML 提示词
 │   ├── tests/
 │   └── sidecar_entry.py       # PyInstaller 入口
-├── frontend/                  # Vue 3 + Naive UI
+├── frontend/                  # Vue 3 + Naive UI + ECharts
 │   └── src/
-│       ├── api/               # API 客户端 + 类型
-│       ├── stores/            # Pinia 状态管理
-│       ├── components/         # 9 个核心业务组件
-│       ├── layouts/           # 主布局
-│       ├── views/             # 页面
-│       └── router/            # Vue Router
 ├── desktop/                   # Tauri 桌面壳
-│   └── src/                   # Rust (main/sidecar/config)
-├── scripts/                   # 打包脚本
-└── docs/                      # PDR + 开发要求
+├── docs/                      # PDR / 开发要求 / 部署说明
+├── Dockerfile
+└── docker-compose.yml
 ```
 
 ## 🚀 快速开始
@@ -82,20 +107,23 @@ ai-novel/
 
 - Python 3.13+
 - Node.js 22+
+- Docker（部署时推荐）
 - （可选）Rust + Tauri CLI（用于桌面打包）
 
 ### 启动后端
 
 ```bash
+cd backend
 python -m venv .venv
+
 # Windows
 .venv\Scripts\activate
+
 # macOS/Linux
 source .venv/bin/activate
 
-pip install fastapi uvicorn pydantic pyyaml openai httpx python-docx reportlab ebooklib
-cd backend
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+pip install -r requirements.txt
+python -m uvicorn app.interfaces.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 ### 启动前端
@@ -106,9 +134,27 @@ npm install
 npm run dev
 ```
 
-访问 http://127.0.0.1:5173
+访问：
 
-### 桌面打包（可选）
+```text
+http://127.0.0.1:5173
+```
+
+### Docker 部署
+
+```bash
+docker compose up -d --build
+```
+
+访问：
+
+```text
+http://127.0.0.1:8000
+```
+
+部署细节见：[`docs/部署上线说明.md`](docs/部署上线说明.md)
+
+### 桌面打包（后续）
 
 ```bash
 # 1. 构建前端
@@ -150,6 +196,7 @@ npm run build
 
 ## 📚 文档
 
+- [`docs/部署上线说明.md`](docs/部署上线说明.md) — Docker 部署、模型配置和上线建议
 - [`docs/PDR-v4-全流程托管情感深度版.md`](docs/PDR-v4-全流程托管情感深度版.md) — 综合 PDR
 - [`docs/开发要求-v4-情感深度增强版.md`](docs/开发要求-v4-情感深度增强版.md) — 执行规格
 - [`docs/情感深度解决方案v2-情感考古架构.md`](docs/情感深度解决方案v2-情感考古架构.md) — 情感方案理论基础
