@@ -27,9 +27,8 @@ from ..infrastructure.database import (
     create_emotion_seed,
     create_reader_pull_report,
     create_step,
+    get_chapter_steps,
     get_emotion_seed,
-    new_id,
-    row_to_dict,
     update_step,
     utc_now,
 )
@@ -104,10 +103,16 @@ class StoryPipeline:
             Updated ChapterContext with all outputs.
         """
         skip = skip_steps or set()
+        completed_outputs = self._completed_step_outputs(ctx)
 
         for step_name, workflow, required in PIPELINE_STEPS:
             if step_name in skip and not required:
                 self._notify(on_step, step_name, "skipped")
+                continue
+            if step_name in completed_outputs:
+                output = completed_outputs[step_name]
+                self._apply_output(step_name, ctx, output)
+                self._notify(on_step, step_name, "skipped", {"reason": "already_completed"})
                 continue
 
             step_record = create_step(
@@ -136,6 +141,27 @@ class StoryPipeline:
                 continue
 
         return ctx
+
+    def _completed_step_outputs(self, ctx: ChapterContext) -> dict[str, dict[str, Any]]:
+        outputs: dict[str, dict[str, Any]] = {}
+        for step in get_chapter_steps(self.job_id, ctx.chapter_number):
+            if step.get("chapter_id") != ctx.chapter_id:
+                continue
+            if step.get("step_status") != "completed":
+                continue
+            raw_output = step.get("step_output") or "{}"
+            if isinstance(raw_output, str):
+                try:
+                    output = json.loads(raw_output)
+                except json.JSONDecodeError:
+                    output = {}
+            elif isinstance(raw_output, dict):
+                output = raw_output
+            else:
+                output = {}
+            if output:
+                outputs[str(step.get("step_name"))] = output
+        return outputs
 
     def _execute_step(self, step_name: str, workflow: str, ctx: ChapterContext) -> dict[str, Any]:
         """Execute a single pipeline step by calling the LLM workflow."""

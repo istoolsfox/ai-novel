@@ -91,13 +91,13 @@ def pause_job(project_id: str, job_id: str) -> dict[str, Any]:
 
 
 def resume_job(project_id: str, job_id: str) -> dict[str, Any]:
-    """Resume a paused or checkpoint job."""
+    """Resume a paused/checkpoint job or retry a failed autonomous job."""
     job = get_job(job_id)
     if not job or job["project_id"] != project_id:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] not in ("paused", "checkpoint"):
+    if job["status"] not in ("paused", "checkpoint", "failed"):
         raise HTTPException(status_code=409, detail=f"Cannot resume job in status '{job['status']}'")
-    update_job_status(job_id, "running", pause_reason="", pause_detail="")
+    update_job_status(job_id, "running", pause_reason="", pause_detail="", error_message="")
     start_job_thread(job_id)
     return get_job(job_id)
 

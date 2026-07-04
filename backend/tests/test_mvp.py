@@ -1505,6 +1505,130 @@ def test_generation_job_fails_instead_of_persisting_outline_like_draft(monkeypat
     assert chapters[0]["draft"] == ""
 
 
+def test_failed_generation_job_can_resume_from_failed_step(monkeypatch, tmp_path):
+    import time
+
+    client = make_client(monkeypatch, tmp_path)
+    project = client.post(
+        "/api/projects",
+        json={"title": "失败续跑", "target_chapter_count": 1, "target_words_per_chapter": 500},
+    ).json()
+    create_story_prerequisites(client, project["id"], 1, "第一章 续跑")
+    blueprint = client.post(
+        f"/api/projects/{project['id']}/blueprints",
+        json={
+            "volume_number": 1,
+            "volume_title": "第一卷",
+            "volume_arc": "测试失败续跑。",
+            "chapter_range": {"start": 1, "end": 1},
+            "generation_params": {"word_count_tolerance": 1.0},
+        },
+    ).json()
+    client.post(f"/api/projects/{project['id']}/blueprints/{blueprint['id']}/approve")
+    client.post(
+        f"/api/projects/{project['id']}/model-configs",
+        json={
+            "title": "writer-model",
+            "category": "OpenAI",
+            "content": "default",
+            "payload": {
+                "api_key": "test-key",
+                "base_url": "https://example.test/v1",
+                "model_name": "writer-model",
+                "is_default": True,
+            },
+        },
+    )
+
+    import backend.app.main as main
+
+    calls: list[str] = []
+    draft_attempts = {"count": 0}
+
+    class FakeResponse:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": self.text}}]}).encode("utf-8")
+
+    good_prose = (
+        "雨声贴着灰塔外墙往上爬。顾栖月把名单摊在灯下，看见自己的名字夹在一串陌生人之间。"
+        "她没有立刻喊人，只把纸角压平，像这样就能把心里的褶皱也压下去。门外有人停了一下，"
+        "脚步声又慢慢远了。她知道再等下去，名单上的人会一个一个从城市里消失，而她会成为最后一个还记得的人。"
+        "钟楼在雾里轻轻震了一下，没有钟声，只有玻璃柜里的旧钥匙跟着响。她伸手去拿钥匙，"
+        "指尖碰到金属时才发现自己一直在发抖。不是害怕名单，而是害怕名单是真的。"
+        "如果它是真的，那么她过去三个月修复的每一份档案，都可能只是替别人擦掉最后的痕迹。"
+    )
+
+    def fake_urlopen(request, timeout=0):
+        body = json.loads(request.data.decode("utf-8"))
+        content = body["messages"][1]["content"]
+        workflow = content.split("工作流：", 1)[1].split("\n", 1)[0]
+        calls.append(workflow)
+        if workflow == "generate_chapter_brief":
+            return FakeResponse(json.dumps({"chapter_title": "第一章 续跑", "chapter_goal": "发现名单"}, ensure_ascii=False))
+        if workflow == "generate_emotion_seed":
+            return FakeResponse(json.dumps({"emotion_seed": {"core_tension": "记得与遗忘", "scene_temperature": "雨夜", "open_question": "名单真假？"}}, ensure_ascii=False))
+        if workflow == "generate_chapter_draft":
+            draft_attempts["count"] += 1
+            if draft_attempts["count"] == 1:
+                return FakeResponse("本章目标：发现名单。\n主要冲突：确认真假。\n关键事件：\n1. 找到名单\n2. 走向灰塔")
+            return FakeResponse(good_prose)
+        if workflow == "emotion_archaeology":
+            return FakeResponse(json.dumps({"reader_felt_map": {"rupture_points": []}}, ensure_ascii=False))
+        if workflow == "deepen_and_bury":
+            return FakeResponse(json.dumps({"revised_text": good_prose}, ensure_ascii=False))
+        if workflow == "summarize_and_bridge":
+            return FakeResponse(json.dumps({
+                "summary": "顾栖月发现名单并确认必须记住被删除者。",
+                "ending_state": {"time": "雨夜", "location": "灰塔门口", "last_action": "她握住旧钥匙"},
+                "open_hooks": [],
+            }, ensure_ascii=False))
+        return FakeResponse("{}")
+
+    monkeypatch.setattr(main.urllib.request, "urlopen", fake_urlopen)
+
+    job = client.post(
+        f"/api/projects/{project['id']}/jobs",
+        json={
+            "blueprint_id": blueprint["id"],
+            "start_chapter": 1,
+            "count": 1,
+            "checkpoint_strategy": "none",
+            "auto_finalize": True,
+            "params": {"generation_mode": "fast"},
+        },
+    ).json()
+    for _ in range(80):
+        current = client.get(f"/api/projects/{project['id']}/jobs/{job['id']}").json()
+        if current["status"] in {"completed", "failed", "checkpoint", "aborted"}:
+            break
+        time.sleep(0.05)
+
+    assert current["status"] == "failed"
+    assert client.post(f"/api/projects/{project['id']}/jobs/{job['id']}/resume").status_code == 200
+    for _ in range(80):
+        current = client.get(f"/api/projects/{project['id']}/jobs/{job['id']}").json()
+        if current["status"] in {"completed", "failed", "checkpoint", "aborted"}:
+            break
+        time.sleep(0.05)
+
+    assert current["status"] == "completed"
+    assert calls.count("generate_chapter_brief") == 1
+    assert calls.count("generate_emotion_seed") == 1
+    assert draft_attempts["count"] == 2
+    chapters = client.get(f"/api/projects/{project['id']}/chapters").json()
+    assert chapters[0]["status"] == "final"
+    assert "雨声贴着灰塔外墙" in chapters[0]["draft"]
+
+
 def test_local_final_chapter_draft_closes_instead_of_adding_next_hook():
     from backend.app.domain.models import AiWorkflowIn
     from backend.app.workflows.generation import build_local_chapter_draft
