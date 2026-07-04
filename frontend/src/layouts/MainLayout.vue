@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, computed, ref, watch } from "vue";
+import { h, computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter, RouterView } from "vue-router";
 import {
   NLayout, NLayoutSider, NLayoutHeader, NLayoutContent, NMenu,
@@ -14,7 +14,23 @@ const projectStore = useProjectStore();
 const settings = useSettingsStore();
 
 const collapsed = ref(false);
+const viewportWidth = ref(typeof window === "undefined" ? 1280 : window.innerWidth);
 const projectId = computed(() => route.params.projectId as string);
+const isNarrowViewport = computed(() => viewportWidth.value < 760);
+const effectiveCollapsed = computed(() => collapsed.value || isNarrowViewport.value);
+
+function updateViewportWidth() {
+  viewportWidth.value = window.innerWidth;
+}
+
+onMounted(() => {
+  updateViewportWidth();
+  window.addEventListener("resize", updateViewportWidth);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("resize", updateViewportWidth);
+});
 
 watch(projectId, (id) => {
   if (id) projectStore.fetchProject(id);
@@ -62,16 +78,16 @@ const projectTitle = computed(() => projectStore.currentProject?.title || "加�
       collapse-mode="width"
       :collapsed-width="64"
       :width="240"
-      :collapsed="collapsed"
+      :collapsed="effectiveCollapsed"
       show-trigger
       @collapse="collapsed = true"
       @expand="collapsed = false"
     >
       <div class="sidebar-logo" @click="goBack">
-        <span v-if="!collapsed" class="logo-text">AI 小说工作台</span>
+        <span v-if="!effectiveCollapsed" class="logo-text">AI 小说工作台</span>
         <span v-else class="logo-emoji">✒️</span>
       </div>
-      <div v-if="!collapsed" class="project-name">
+      <div v-if="!effectiveCollapsed" class="project-name">
         <NText depth="3" style="font-size: 12px">当前项目</NText>
         <NText strong :title="projectTitle">{{ projectTitle }}</NText>
       </div>
@@ -79,7 +95,7 @@ const projectTitle = computed(() => projectStore.currentProject?.title || "加�
         <NMenu
           :options="menuOptions"
           :value="activeKey"
-          :collapsed="collapsed"
+          :collapsed="effectiveCollapsed"
           :collapsed-width="64"
           :collapsed-icon-size="22"
           @update:value="handleMenuUpdate"
