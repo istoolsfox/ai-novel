@@ -115,7 +115,7 @@ export function subscribeSSE(
   onError?: (err: Event) => void,
 ): () => void {
   if (isStaticDemoEnabled()) {
-    return staticSubscribeSSE(path, onEvent, onError);
+    return staticSubscribeSSE(path, onEvent);
   }
 
   const url = `${getApiBaseSync()}${path}`;
