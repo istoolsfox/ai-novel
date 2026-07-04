@@ -1,4 +1,11 @@
-// ===== API 客户端：fetch 封装 + SSE 支持（Tauri/Web 双模式）=====
+// ===== API 客户端：fetch 封装 + SSE 支持（Tauri/Web/静态演示模式）=====
+
+import {
+  isStaticDemoEnabled,
+  staticDownloadFile,
+  staticRequest,
+  staticSubscribeSSE,
+} from "./staticDemo";
 
 /**
  * Tauri 环境检测。
@@ -21,10 +28,12 @@ let _apiBaseCache = "";
 
 /**
  * 异步获取 API base URL：
+ * - 静态演示模式：不请求后端，直接走 localStorage mock
  * - Tauri 模式：通过 invoke('get_sidecar_port') 获取 sidecar 端口
  * - Web 模式：默认同源；如果配置了 VITE_API_BASE_URL，则请求外部后端
  */
 export async function getApiBase(): Promise<string> {
+  if (isStaticDemoEnabled()) return "";
   if (_apiBaseCache) return _apiBaseCache;
 
   if (isTauri()) {
@@ -47,6 +56,7 @@ export async function getApiBase(): Promise<string> {
  * 用于 SSE 等需要同步 URL 的场景。
  */
 export function getApiBaseSync(): string {
+  if (isStaticDemoEnabled()) return "";
   return _apiBaseCache || configuredApiBase();
 }
 
@@ -63,6 +73,10 @@ async function request<T>(
   path: string,
   body?: any,
 ): Promise<T> {
+  if (isStaticDemoEnabled()) {
+    return staticRequest<T>(method, path, body);
+  }
+
   const base = await getApiBase();
   const url = `${base}${path}`;
   const options: RequestInit = {
@@ -100,6 +114,10 @@ export function subscribeSSE(
   onEvent: (data: any) => void,
   onError?: (err: Event) => void,
 ): () => void {
+  if (isStaticDemoEnabled()) {
+    return staticSubscribeSSE(path, onEvent, onError);
+  }
+
   const url = `${getApiBaseSync()}${path}`;
   const source = new EventSource(url);
 
@@ -130,6 +148,10 @@ export async function downloadFile(
   path: string,
   filename: string,
 ): Promise<void> {
+  if (isStaticDemoEnabled()) {
+    return staticDownloadFile(path, filename);
+  }
+
   const base = await getApiBase();
   const url = `${base}${path}`;
   const resp = await fetch(url);
