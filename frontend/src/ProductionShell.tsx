@@ -8,20 +8,15 @@ import {
   subscribeProjectSelection,
 } from './projectSelectionBridge';
 
+installProjectSelectionBridge();
+
 export function ProductionShell() {
   const [selectedProjectId, setSelectedProjectId] = useState(getPreferredProjectId());
   const [editorRevision, setEditorRevision] = useState(0);
 
-  useEffect(() => {
-    const uninstall = installProjectSelectionBridge();
-    const unsubscribe = subscribeProjectSelection((projectId) => {
-      setSelectedProjectId((current) => (current === projectId ? current : projectId));
-    });
-    return () => {
-      unsubscribe();
-      uninstall();
-    };
-  }, []);
+  useEffect(() => subscribeProjectSelection((projectId) => {
+    setSelectedProjectId((current) => (current === projectId ? current : projectId));
+  }), []);
 
   const selectFromConsole = useCallback((projectId: string) => {
     if (!projectId) return;
