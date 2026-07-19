@@ -1,5 +1,10 @@
 from typing import Any
 
+LEGACY_GENERIC_PROJECT_PATHS = {
+    "/api/projects/{project_id}/{resource}",
+    "/api/projects/{project_id}/{resource}/{record_id}",
+}
+
 
 def has_route(app: Any, path: str, method: str | None = None) -> bool:
     expected_method = method.upper() if method else ""
@@ -32,3 +37,20 @@ def prioritize_prefix(app: Any, prefix: str) -> None:
         return
     remaining = [route for route in routes if route not in preferred]
     app.router.routes[:] = preferred + remaining
+
+
+def move_legacy_generic_project_routes_last(app: Any) -> None:
+    """Keep explicit project APIs ahead of the original generic CRUD fallback.
+
+    The generic compatibility routes intentionally accept arbitrary resource
+    names and therefore shadow exact endpoints such as `/story-graph` and
+    `/worldlines` when they appear first. A final ordering pass after every
+    module has installed its router makes behavior independent of bootstrap,
+    hot-reload, and import order.
+    """
+    routes = list(getattr(app.router, "routes", []))
+    generic = [route for route in routes if str(getattr(route, "path", "")) in LEGACY_GENERIC_PROJECT_PATHS]
+    if not generic:
+        return
+    explicit = [route for route in routes if route not in generic]
+    app.router.routes[:] = explicit + generic
