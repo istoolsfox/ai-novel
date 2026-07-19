@@ -141,9 +141,10 @@ test('loads the autonomous dashboard and starts a managed chapter range', async 
   fireEvent.click(screen.getByRole('button', { name: '打开统一托管控制台' }));
 
   expect(await screen.findByRole('dialog', { name: '统一托管控制台' })).toBeInTheDocument();
-  expect(await screen.findByText('旧档案馆主线')).toBeInTheDocument();
-  expect(screen.getByText('1 条关系状态')).toBeInTheDocument();
+  expect(await screen.findByText('1 条关系状态')).toBeInTheDocument();
   expect(screen.getByText('project_backed')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /剧情图谱/ }));
+  expect(await screen.findByText('旧档案馆主线')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: /托管任务/ }));
   fireEvent.change(screen.getByLabelText('起始章节'), { target: { value: '3' } });
