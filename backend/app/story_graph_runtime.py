@@ -2,7 +2,6 @@ from typing import Any
 
 _COMPILER_PATCHED = False
 _CONTRACT_PATCHED = False
-_INSTALLED_APP_IDS: set[int] = set()
 
 
 def patch_memory_compiler() -> None:
@@ -60,30 +59,16 @@ def patch_contract_runtime() -> None:
     _CONTRACT_PATCHED = True
 
 
-def _prioritize_story_graph_routes(app) -> None:
-    """Move explicit story-graph routes before the legacy generic resource route.
-
-    The original compatibility layer used an HTTP middleware to intercept the
-    story-graph root path. Installing middleware from the FastAPI lifespan is
-    invalid after Starlette has started. The router already exposes the exact
-    root endpoint, so deterministic route ordering is sufficient and works in
-    TestClient, Uvicorn, Docker, and hot reload without runtime middleware.
-    """
-    prefix = "/api/projects/{project_id}/story-graph"
-    routes = list(app.router.routes)
-    graph_routes = [route for route in routes if str(getattr(route, "path", "")).startswith(prefix)]
-    if not graph_routes:
-        return
-    remaining = [route for route in routes if route not in graph_routes]
-    app.router.routes[:] = graph_routes + remaining
-
-
 def install_story_graph_api() -> None:
     from . import main
+    from .router_install import include_router_once, prioritize_prefix
     from .story_graph_api import router
 
-    app_id = id(main.app)
-    if app_id not in _INSTALLED_APP_IDS:
-        main.app.include_router(router)
-        _INSTALLED_APP_IDS.add(app_id)
-    _prioritize_story_graph_routes(main.app)
+    include_router_once(
+        main.app,
+        router,
+        marker_path="/api/projects/{project_id}/story-graph",
+        marker_method="GET",
+    )
+    # Explicit graph routes must precede the legacy generic resource endpoint.
+    prioritize_prefix(main.app, "/api/projects/{project_id}/story-graph")
