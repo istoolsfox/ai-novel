@@ -1,10 +1,7 @@
 import copy
-import json
 from typing import Any
 
 _BOOTSTRAPPED = False
-_INSTALLED_APP_IDS: set[int] = set()
-_PATCHED_APP_IDS: set[int] = set()
 
 
 def bootstrap_security_release() -> None:
@@ -136,9 +133,8 @@ def bootstrap_security_release() -> None:
         return result
 
     def install_model_route_security() -> None:
-        app_id = id(main.app)
-        if app_id in _PATCHED_APP_IDS:
-            return
+        # Re-apply wrappers to the actual generic routes on every app init. This
+        # is idempotent and avoids Python object-ID reuse across hot reloads.
         for route in main.app.routes:
             path = getattr(route, "path", "")
             methods = getattr(route, "methods", set()) or set()
@@ -151,7 +147,6 @@ def bootstrap_security_release() -> None:
             elif path == "/api/projects/{project_id}/{resource}/{record_id}" and "DELETE" in methods:
                 route.endpoint = secure_delete_generic
                 route.dependant.call = secure_delete_generic
-        _PATCHED_APP_IDS.add(app_id)
 
     def init_db_with_security() -> None:
         init_security_schema()
@@ -159,13 +154,11 @@ def bootstrap_security_release() -> None:
         init_security_schema()
         migrate_plaintext_model_configs()
 
-        # Hot reload and tests recreate functions and the FastAPI app on the existing module.
+        from .router_install import include_router_once
+
         main.resolve_model_config = resolve_model_config_with_credentials
         install_model_route_security()
-        app_id = id(main.app)
-        if app_id not in _INSTALLED_APP_IDS:
-            main.app.include_router(router)
-            _INSTALLED_APP_IDS.add(app_id)
+        include_router_once(main.app, router, marker_path="/api/security/status", marker_method="GET")
 
     database.init_db = init_db_with_security
     main.init_db = init_db_with_security
