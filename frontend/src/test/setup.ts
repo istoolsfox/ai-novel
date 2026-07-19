@@ -11,23 +11,23 @@ if (!globalThis.ResizeObserver) {
 }
 
 if (!globalThis.DOMMatrixReadOnly) {
-  globalThis.DOMMatrixReadOnly = class DOMMatrixReadOnly {
+  const DOMMatrixReadOnlyMock = class {
     m22 = 1;
-    constructor() {}
-  } as typeof DOMMatrixReadOnly;
+  } as unknown as typeof DOMMatrixReadOnly;
+  globalThis.DOMMatrixReadOnly = DOMMatrixReadOnlyMock;
 }
 
 if (!window.matchMedia) {
-  window.matchMedia = () => ({
+  window.matchMedia = ((query: string) => ({
     matches: false,
-    media: '',
+    media: query,
     onchange: null,
     addListener() {},
     removeListener() {},
     addEventListener() {},
     removeEventListener() {},
     dispatchEvent: () => false,
-  });
+  })) as typeof window.matchMedia;
 }
 
 afterEach(() => {
