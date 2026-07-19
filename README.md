@@ -1,6 +1,6 @@
 # AI Novel Workbench
 
-**当前版本：`1.0.0-rc.1`**
+**当前稳定版本：`1.0.0`**
 
 AI Novel Workbench 是一个本地优先的 AI 长篇小说创作、自动托管和知识管理系统。它使用 FastAPI、React、SQLite 与独立 Worker，在一台电脑上完成章节生成、连续性检查、记忆编译、剧情规划、世界线分叉、Obsidian 导出、备份恢复和运行维护。
 
@@ -17,7 +17,7 @@ AI Novel Workbench 是一个本地优先的 AI 长篇小说创作、自动托管
 - 独立 Worker：SQLite 租约、心跳、失联恢复、异步导出和自动备份。
 - 安全：本地 Fernet 加密 API Key、可选管理令牌、密钥轮换和旧密钥恢复。
 - 升级：带校验和的数据库迁移、升级前快照、失败自动恢复和人工回滚。
-- 发布：确定性源码包、SHA-256 清单、Docker 镜像验证和黄金路径端到端测试。
+- 发布保障：固定依赖、OpenAPI 合约、CycloneDX SBOM、敏感信息扫描、漏洞审计、灾难恢复演练和确定性发布包。
 
 ## 最快启动方式：Docker Desktop
 
@@ -53,7 +53,7 @@ docker compose down
 不使用 Docker 时，先安装 Python 3.12 和 Node.js 22：
 
 ```powershell
-python -m pip install -r backend/requirements.txt
+python -m pip install -r backend/requirements.lock
 cd frontend
 npm ci
 cd ..
@@ -159,11 +159,27 @@ python -m backend.app.migration_cli rotate-key
 - 带 `RESTORE` 确认的安全恢复
 - 恢复前自动创建 `pre_restore` 安全备份
 
+完整恢复流程见 `docs/disaster-recovery.md`。
+
+## 依赖、SBOM 与 API 合约
+
+稳定版使用：
+
+```text
+backend/requirements.lock   Python 3.12 完整锁定依赖
+frontend/package-lock.json  Node.js 22 完整锁定依赖
+docs/sbom.cdx.json          CycloneDX 1.5 SBOM
+docs/openapi.json           已提交的 OpenAPI 合约快照
+```
+
+供应链门禁会重新生成这些文件并检查漂移，同时运行 Python/Node 高危漏洞审计和敏感信息扫描。
+
 ## 构建发布包
 
 ```bash
 python scripts/build_release.py --output release-dist
 python scripts/build_release.py --output release-dist --verify
+python scripts/release_preflight.py --output release-dist/release-preflight.json
 ```
 
 生成：
@@ -173,6 +189,9 @@ ai-novel-workbench-<version>-source.zip
 ai-novel-workbench-<version>-manifest.json
 SHA256SUMS
 release-result.json
+release-preflight.json
+SBOM.cdx.json
+openapi.json
 ```
 
 源码包排除 `.env`、主密钥、数据库、项目数据、备份和依赖目录，并包含逐文件 SHA-256 清单。
@@ -194,20 +213,38 @@ npm test
 npm run build
 ```
 
-Docker 发布验证由 `.github/workflows/release-validation.yml` 实际构建后端与前端镜像、启动 Compose、检查版本 API、Schema、页面和独立 Worker 心跳。
+稳定版门禁由以下工作流共同执行：
+
+```text
+.github/workflows/backend-tests.yml
+.github/workflows/frontend-tests.yml
+.github/workflows/release-validation.yml
+.github/workflows/stable-release-gate.yml
+```
+
+其中 Docker 发布验证会实际构建后端与前端镜像、启动 Compose、检查版本 API、Schema、页面、独立 Worker 心跳，并完成数据库备份恢复演练。
 
 ## 重要目录
 
 ```text
-backend/app/          后端、Worker、迁移和导出逻辑
-backend/tests/        后端与端到端测试
-frontend/src/         编辑器和各控制中心
-deploy/               Nginx、环境变量和 systemd 模板
-scripts/windows/      Windows 一键启动与停止
+backend/app/              后端、Worker、迁移和导出逻辑
+backend/tests/            后端、端到端与灾难恢复测试
+frontend/src/             编辑器和各控制中心
+deploy/                   Nginx、环境变量和 systemd 模板
+scripts/windows/          Windows 一键启动与停止
 scripts/build_release.py  发布包构建器
-docs/                 各阶段和运维文档
+scripts/release_preflight.py 稳定版发布前检查
+docs/                     API、SBOM、运维与阶段文档
 ```
+
+## 安全、升级与支持
+
+- 安全问题：`SECURITY.md`
+- 支持范围：`SUPPORT.md`
+- 升级流程：`UPGRADING.md`
+- 稳定版检查表：`RELEASE_CHECKLIST.md`
+- 完整变更：`CHANGELOG.md`
 
 ## 发布说明
 
-完整变更见 [CHANGELOG.md](CHANGELOG.md)。`1.0.0-rc.1` 是发布候选版本：功能链已经完成并进入真实镜像、升级回滚和黄金路径验收阶段。除非明确创建版本标签或手动批准发布工作流，否则仓库不会自动创建 GitHub Release。
+`1.0.0` 是首个稳定版本。仓库提供受控发布工作流，但合并分支不会自动创建 Git 标签、GitHub Release 或推送公开镜像；这些动作必须明确授权后执行。
