@@ -21,7 +21,9 @@ export function getPreferredProjectId() {
 
 export function subscribeProjectSelection(listener: (projectId: string) => void) {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function installProjectSelectionBridge() {
