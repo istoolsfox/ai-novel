@@ -76,7 +76,7 @@ def _insert_copy(
     for key, value in list(data.items()):
         decoded = _decode(value)
         rewritten = _rewrite(decoded, id_map)
-        data[key] = _json(rewritten) if decoded is not value and isinstance(rewritten, (dict, list)) else rewritten
+        data[key] = _json(rewritten) if isinstance(rewritten, (dict, list)) else rewritten
     for key, value in (overrides or {}).items():
         if key in columns:
             data[key] = value
