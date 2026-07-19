@@ -18,17 +18,6 @@ def bootstrap_security_release() -> None:
     original_init_db = database.init_db
     original_resolve_model_config = main.resolve_model_config
 
-    def init_db_with_security() -> None:
-        init_security_schema()
-        original_init_db()
-        init_security_schema()
-        migrate_plaintext_model_configs()
-
-        app_id = id(main.app)
-        if app_id not in _INSTALLED_APP_IDS:
-            main.app.include_router(router)
-            _INSTALLED_APP_IDS.add(app_id)
-
     def resolve_model_config_with_credentials(project_id: str, workflow: str) -> dict[str, Any] | None:
         config = original_resolve_model_config(project_id, workflow)
         if not config:
@@ -44,6 +33,20 @@ def bootstrap_security_release() -> None:
             payload["credential_hint"] = credential.get("secret_hint", "")
             resolved["payload"] = payload
         return resolved
+
+    def init_db_with_security() -> None:
+        init_security_schema()
+        original_init_db()
+        init_security_schema()
+        migrate_plaintext_model_configs()
+
+        # Hot reload and test reloads recreate functions on the existing module object.
+        # Reinstall the resolver and router whenever the app initializes.
+        main.resolve_model_config = resolve_model_config_with_credentials
+        app_id = id(main.app)
+        if app_id not in _INSTALLED_APP_IDS:
+            main.app.include_router(router)
+            _INSTALLED_APP_IDS.add(app_id)
 
     database.init_db = init_db_with_security
     main.resolve_model_config = resolve_model_config_with_credentials
