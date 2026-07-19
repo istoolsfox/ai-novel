@@ -9,3 +9,7 @@ projects/
 backend/app.db
 frontend/.vite/
 *.tsbuildinfo
+.env
+*.key
+.ai-novel-master.key
+.runtime/
