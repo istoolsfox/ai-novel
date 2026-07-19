@@ -1,9 +1,11 @@
 import { lazy, Suspense, useState } from 'react';
-import { Activity, LoaderCircle, ServerCog } from 'lucide-react';
+import { Activity, KeyRound, LoaderCircle, ServerCog } from 'lucide-react';
 import '../operations-panel.css';
+import '../security-panel.css';
 
 const UnifiedConsolePanel = lazy(() => import('./UnifiedConsolePanel'));
 const OperationsPanel = lazy(() => import('./OperationsPanel'));
+const SecurityPanel = lazy(() => import('./SecurityPanel'));
 
 export type UnifiedConsoleProps = {
   selectedProjectId?: string;
@@ -13,6 +15,7 @@ export type UnifiedConsoleProps = {
 export function UnifiedConsole({ selectedProjectId = '', onSelectedProjectIdChange }: UnifiedConsoleProps) {
   const [open, setOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
+  const [securityOpen, setSecurityOpen] = useState(false);
 
   const fallback = (
     <div className="uc-backdrop" role="presentation">
@@ -26,6 +29,10 @@ export function UnifiedConsole({ selectedProjectId = '', onSelectedProjectIdChan
   return (
     <>
       <div className="uc-launcher-stack">
+        <button className="uc-launcher security-launcher" type="button" onClick={() => setSecurityOpen(true)} aria-label="打开安全与凭证中心">
+          <KeyRound size={20} />
+          <span>安全中心</span>
+        </button>
         <button className="uc-launcher ops-launcher" type="button" onClick={() => setOperationsOpen(true)} aria-label="打开运行与部署中心">
           <ServerCog size={20} />
           <span>运行中心</span>
@@ -47,6 +54,11 @@ export function UnifiedConsole({ selectedProjectId = '', onSelectedProjectIdChan
       {operationsOpen && (
         <Suspense fallback={fallback}>
           <OperationsPanel onClose={() => setOperationsOpen(false)} />
+        </Suspense>
+      )}
+      {securityOpen && (
+        <Suspense fallback={fallback}>
+          <SecurityPanel selectedProjectId={selectedProjectId} onClose={() => setSecurityOpen(false)} />
         </Suspense>
       )}
     </>
