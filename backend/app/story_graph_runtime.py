@@ -1,10 +1,8 @@
 from typing import Any
-from urllib.parse import unquote
 
 _COMPILER_PATCHED = False
 _CONTRACT_PATCHED = False
 _INSTALLED_APP_IDS: set[int] = set()
-_MIDDLEWARE_APP_IDS: set[int] = set()
 
 
 def patch_memory_compiler() -> None:
@@ -63,6 +61,14 @@ def patch_contract_runtime() -> None:
 
 
 def _prioritize_story_graph_routes(app) -> None:
+    """Move explicit story-graph routes before the legacy generic resource route.
+
+    The original compatibility layer used an HTTP middleware to intercept the
+    story-graph root path. Installing middleware from the FastAPI lifespan is
+    invalid after Starlette has started. The router already exposes the exact
+    root endpoint, so deterministic route ordering is sufficient and works in
+    TestClient, Uvicorn, Docker, and hot reload without runtime middleware.
+    """
     prefix = "/api/projects/{project_id}/story-graph"
     routes = list(app.router.routes)
     graph_routes = [route for route in routes if str(getattr(route, "path", "")).startswith(prefix)]
@@ -70,43 +76,6 @@ def _prioritize_story_graph_routes(app) -> None:
         return
     remaining = [route for route in routes if route not in graph_routes]
     app.router.routes[:] = graph_routes + remaining
-
-
-def _install_story_graph_root_middleware(app) -> None:
-    app_id = id(app)
-    if app_id in _MIDDLEWARE_APP_IDS:
-        return
-
-    from fastapi import HTTPException
-    from fastapi.responses import JSONResponse
-
-    prefix = "/api/projects/"
-    suffix = "/story-graph"
-
-    @app.middleware("http")
-    async def story_graph_root_middleware(request, call_next):
-        path = request.url.path.rstrip("/")
-        if request.method == "GET" and path.startswith(prefix) and path.endswith(suffix):
-            project_part = path[len(prefix) : -len(suffix)].strip("/")
-            if project_part and "/" not in project_part:
-                raw_chapter = request.query_params.get("chapter_number")
-                try:
-                    chapter_number = int(raw_chapter) if raw_chapter not in (None, "") else None
-                except ValueError:
-                    return JSONResponse(
-                        status_code=422,
-                        content={"detail": "chapter_number must be an integer"},
-                    )
-                try:
-                    from .story_graph_api import get_story_graph
-
-                    payload = get_story_graph(unquote(project_part), chapter_number)
-                except HTTPException as exc:
-                    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-                return JSONResponse(status_code=200, content=payload)
-        return await call_next(request)
-
-    _MIDDLEWARE_APP_IDS.add(app_id)
 
 
 def install_story_graph_api() -> None:
@@ -118,4 +87,3 @@ def install_story_graph_api() -> None:
         main.app.include_router(router)
         _INSTALLED_APP_IDS.add(app_id)
     _prioritize_story_graph_routes(main.app)
-    _install_story_graph_root_middleware(main.app)
