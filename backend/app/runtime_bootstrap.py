@@ -1,5 +1,4 @@
 _BOOTSTRAPPED = False
-_INSTALLED_APP_IDS: set[int] = set()
 
 
 def bootstrap_runtime_reliability() -> None:
@@ -23,13 +22,11 @@ def bootstrap_runtime_reliability() -> None:
 
         from .backup_scheduler import init_backup_schedule_schema
         from . import main
+        from .router_install import include_router_once
         from .runtime_api import router
 
         init_backup_schedule_schema()
-        app_id = id(main.app)
-        if app_id not in _INSTALLED_APP_IDS:
-            main.app.include_router(router)
-            _INSTALLED_APP_IDS.add(app_id)
+        include_router_once(main.app, router, marker_path="/api/runtime/health", marker_method="GET")
 
     database.init_db = init_db_with_runtime
     _BOOTSTRAPPED = True
