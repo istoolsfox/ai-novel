@@ -18,10 +18,10 @@ from .runtime_queue import (
     heartbeat_runtime_task,
     heartbeat_worker,
     recover_stale_generation_jobs,
-    recover_stale_runtime_tasks,
     register_worker,
     stop_worker,
 )
+from .runtime_recovery import recover_stale_runtime_tasks
 
 
 class RuntimeWorker:
