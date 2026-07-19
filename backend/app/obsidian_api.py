@@ -80,6 +80,7 @@ def obsidian_export_status(project_id: str) -> dict[str, Any]:
     if task_is_newer and task and task.get("status") in {"queued", "running", "failed"}:
         return {
             **(export or {}),
+            "exists": bool(export),
             "project_id": project_id,
             "status": task.get("status"),
             "task_id": task.get("id", ""),
@@ -87,9 +88,10 @@ def obsidian_export_status(project_id: str) -> dict[str, Any]:
             "file_count": int((export or {}).get("file_count") or 0),
         }
     if export:
-        return {**export, "task": task}
+        return {**export, "exists": True, "task": task}
     return {
         "project_id": project_id,
+        "exists": False,
         "status": "not_exported",
         "files": [],
         "file_count": 0,
