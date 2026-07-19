@@ -168,6 +168,7 @@ def bootstrap_security_release() -> None:
             _INSTALLED_APP_IDS.add(app_id)
 
     database.init_db = init_db_with_security
+    main.init_db = init_db_with_security
     main.resolve_model_config = resolve_model_config_with_credentials
     install_model_route_security()
     _BOOTSTRAPPED = True
