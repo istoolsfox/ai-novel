@@ -4,6 +4,7 @@ import {
   Controls,
   MarkerType,
   MiniMap,
+  Position,
   ReactFlow,
   useEdgesState,
   useNodesState,
@@ -97,8 +98,8 @@ export function buildStoryFlow(
         detail: `${text(thread.current_stage, '未设阶段')} → ${text(thread.next_target, '未设下一目标')}`,
       },
       className: nodeStatusClass(status, 'thread'),
-      sourcePosition: 'bottom',
-      targetPosition: 'top',
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
     });
   });
 
@@ -120,6 +121,8 @@ export function buildStoryFlow(
             detail: `${threadKey} · 计划第 ${text(node.planned_chapter, '未定')} 章`,
           },
           className: nodeStatusClass(status, 'story-node'),
+          sourcePosition: Position.Bottom,
+          targetPosition: Position.Top,
         });
       });
   });
