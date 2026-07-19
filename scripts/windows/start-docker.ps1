@@ -11,6 +11,11 @@ if (-not (Test-Path ".env") -and (Test-Path "deploy/.env.example")) {
     Write-Host "已从 deploy/.env.example 创建 .env。"
 }
 
+$Port = "8080"
+if ($env:AI_NOVEL_PORT) {
+    $Port = $env:AI_NOVEL_PORT
+}
+
 docker compose up -d --build
-Write-Host "AI 小说系统已启动：http://127.0.0.1:$($env:AI_NOVEL_PORT ?? '8080')"
+Write-Host "AI 小说系统已启动：http://127.0.0.1:$Port"
 docker compose ps
