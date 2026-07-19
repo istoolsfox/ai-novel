@@ -22,6 +22,7 @@ from .backup_service import (
     restore_database_backup,
 )
 from .database import connect, database_path, rows_to_dicts, utc_now
+from .migration_service import migration_status
 from .runtime_queue import runtime_diagnostics, runtime_sync_enabled, runtime_task
 from .runtime_recovery import recover_all_stale_work
 
@@ -91,6 +92,7 @@ def runtime_health() -> dict[str, Any]:
     storage = _storage_check()
     diagnostics = runtime_diagnostics()
     schedule = get_backup_schedule()
+    schema = migration_status()
     queued_work = (
         int(diagnostics.get("generation_jobs", {}).get("queued", 0))
         + int(diagnostics.get("generation_jobs", {}).get("running", 0))
@@ -106,6 +108,10 @@ def runtime_health() -> dict[str, Any]:
         warnings.append("自动备份已启用，但没有健康的 Worker。")
     if schedule.get("last_error"):
         warnings.append("最近一次自动备份失败。")
+    if schema.get("drift") or schema.get("unknown_versions"):
+        warnings.append("数据库迁移历史存在校验和漂移或未知版本，升级已被阻止。")
+    elif schema.get("pending"):
+        warnings.append("数据库存在待执行迁移，请在启动 Worker 前完成升级。")
     status = "ok" if database.get("ok") and storage.get("ok") and not warnings else "degraded"
     return {
         "status": status,
@@ -113,6 +119,7 @@ def runtime_health() -> dict[str, Any]:
         "storage": storage,
         "runtime": diagnostics,
         "backup_schedule": schedule,
+        "migrations": schema,
         "warnings": warnings,
         "checked_at": utc_now(),
     }
@@ -120,7 +127,11 @@ def runtime_health() -> dict[str, Any]:
 
 @router.get("/diagnostics")
 def get_runtime_diagnostics() -> dict[str, Any]:
-    return {**runtime_diagnostics(), "backup_schedule": get_backup_schedule()}
+    return {
+        **runtime_diagnostics(),
+        "backup_schedule": get_backup_schedule(),
+        "migrations": migration_status(),
+    }
 
 
 @router.get("/workers")
