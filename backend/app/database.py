@@ -206,6 +206,91 @@ def init_db() -> None:
                 FOREIGN KEY(project_id) REFERENCES projects(id)
             );
 
+            CREATE TABLE IF NOT EXISTS chapter_contracts (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                chapter_id TEXT NOT NULL,
+                chapter_number INTEGER NOT NULL,
+                previous_bridge_id TEXT DEFAULT '',
+                payload TEXT DEFAULT '{}',
+                status TEXT DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, chapter_id),
+                FOREIGN KEY(project_id) REFERENCES projects(id),
+                FOREIGN KEY(chapter_id) REFERENCES chapters(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS chapter_bridges (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                chapter_id TEXT NOT NULL,
+                chapter_number INTEGER NOT NULL,
+                payload TEXT DEFAULT '{}',
+                status TEXT DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, chapter_id),
+                FOREIGN KEY(project_id) REFERENCES projects(id),
+                FOREIGN KEY(chapter_id) REFERENCES chapters(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS continuity_checks (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                chapter_id TEXT NOT NULL,
+                chapter_number INTEGER NOT NULL,
+                stage TEXT NOT NULL DEFAULT 'initial',
+                status TEXT NOT NULL DEFAULT 'warning',
+                score REAL NOT NULL DEFAULT 0,
+                payload TEXT DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES projects(id),
+                FOREIGN KEY(chapter_id) REFERENCES chapters(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS character_states (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                character_key TEXT NOT NULL,
+                character_id TEXT DEFAULT '',
+                character_name TEXT DEFAULT '',
+                chapter_id TEXT NOT NULL,
+                chapter_number INTEGER NOT NULL,
+                location TEXT DEFAULT '',
+                physical_state TEXT DEFAULT '',
+                emotional_state TEXT DEFAULT '',
+                current_goal TEXT DEFAULT '',
+                alive_status TEXT DEFAULT 'alive',
+                visibility_status TEXT DEFAULT 'public',
+                payload TEXT DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, character_key, chapter_id),
+                FOREIGN KEY(project_id) REFERENCES projects(id),
+                FOREIGN KEY(chapter_id) REFERENCES chapters(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS character_knowledge (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                character_key TEXT NOT NULL,
+                character_id TEXT DEFAULT '',
+                character_name TEXT DEFAULT '',
+                fact_key TEXT NOT NULL,
+                fact_text TEXT DEFAULT '',
+                knowledge_status TEXT DEFAULT 'unknown',
+                confidence REAL DEFAULT 0,
+                source_chapter_id TEXT NOT NULL,
+                source_chapter_number INTEGER NOT NULL,
+                payload TEXT DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, character_key, fact_key, source_chapter_id),
+                FOREIGN KEY(project_id) REFERENCES projects(id),
+                FOREIGN KEY(source_chapter_id) REFERENCES chapters(id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_generation_jobs_project_status
             ON generation_jobs(project_id, status, created_at);
 
@@ -214,6 +299,38 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_generation_events_job_created
             ON generation_events(job_id, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_chapter_bridges_project_number
+            ON chapter_bridges(project_id, chapter_number, status);
+
+            CREATE INDEX IF NOT EXISTS idx_continuity_checks_chapter_stage
+            ON continuity_checks(project_id, chapter_id, stage, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_character_states_project_character
+            ON character_states(project_id, character_key, chapter_number);
+
+            CREATE INDEX IF NOT EXISTS idx_character_knowledge_project_character
+            ON character_knowledge(project_id, character_key, fact_key, source_chapter_number);
+
+            CREATE TRIGGER IF NOT EXISTS cleanup_chapter_continuity
+            AFTER DELETE ON chapters
+            BEGIN
+                DELETE FROM chapter_contracts WHERE chapter_id = OLD.id;
+                DELETE FROM chapter_bridges WHERE chapter_id = OLD.id;
+                DELETE FROM continuity_checks WHERE chapter_id = OLD.id;
+                DELETE FROM character_states WHERE chapter_id = OLD.id;
+                DELETE FROM character_knowledge WHERE source_chapter_id = OLD.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS cleanup_project_continuity
+            AFTER DELETE ON projects
+            BEGIN
+                DELETE FROM chapter_contracts WHERE project_id = OLD.id;
+                DELETE FROM chapter_bridges WHERE project_id = OLD.id;
+                DELETE FROM continuity_checks WHERE project_id = OLD.id;
+                DELETE FROM character_states WHERE project_id = OLD.id;
+                DELETE FROM character_knowledge WHERE project_id = OLD.id;
+            END;
             """
         )
 
@@ -234,9 +351,9 @@ def init_db() -> None:
                 """
             )
 
-    from .autopilot import install_autopilot
+    from .continuity_engine import install_continuity
 
-    install_autopilot()
+    install_continuity()
 
 
 GENERIC_TABLES = {
