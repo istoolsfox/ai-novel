@@ -22,6 +22,33 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
       - name: Run frontend tests
-        run: npm test
+        id: tests
+        shell: bash
+        run: |
+          set +e
+          npm test > frontend-test-output.txt 2>&1
+          status=$?
+          cat frontend-test-output.txt
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
       - name: Build frontend
-        run: npm run build
+        id: build
+        shell: bash
+        run: |
+          set +e
+          npm run build > frontend-build-output.txt 2>&1
+          status=$?
+          cat frontend-build-output.txt
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload frontend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-output
+          path: |
+            frontend/frontend-test-output.txt
+            frontend/frontend-build-output.txt
+      - name: Fail when frontend validation failed
+        if: steps.tests.outputs.status != '0' || steps.build.outputs.status != '0'
+        run: exit 1
