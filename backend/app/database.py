@@ -27,8 +27,10 @@ def database_path() -> Path:
 def connect():
     path = database_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 30000")
     try:
         yield conn
         conn.commit()
@@ -40,7 +42,7 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if row is None:
         return None
     data = dict(row)
-    for key in ("payload", "input_snapshot"):
+    for key in ("payload", "input_snapshot", "output_snapshot"):
         if key in data and isinstance(data[key], str) and data[key]:
             try:
                 data[key] = json.loads(data[key])
@@ -146,6 +148,73 @@ def init_db() -> None:
                 error_message TEXT DEFAULT '',
                 created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS generation_jobs (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                mode TEXT NOT NULL DEFAULT 'full_autopilot',
+                status TEXT NOT NULL DEFAULT 'queued',
+                start_chapter INTEGER NOT NULL,
+                end_chapter INTEGER NOT NULL,
+                current_chapter INTEGER NOT NULL,
+                current_step TEXT DEFAULT '',
+                total_steps INTEGER NOT NULL DEFAULT 0,
+                completed_steps INTEGER NOT NULL DEFAULT 0,
+                max_retries INTEGER NOT NULL DEFAULT 2,
+                error_message TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                started_at TEXT DEFAULT '',
+                paused_at TEXT DEFAULT '',
+                completed_at TEXT DEFAULT '',
+                FOREIGN KEY(project_id) REFERENCES projects(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS generation_steps (
+                id TEXT PRIMARY KEY,
+                job_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                chapter_id TEXT NOT NULL,
+                chapter_number INTEGER NOT NULL,
+                step_order INTEGER NOT NULL,
+                workflow TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                max_retries INTEGER NOT NULL DEFAULT 2,
+                input_snapshot TEXT DEFAULT '{}',
+                output_snapshot TEXT DEFAULT '{}',
+                error_message TEXT DEFAULT '',
+                started_at TEXT DEFAULT '',
+                completed_at TEXT DEFAULT '',
+                idempotency_key TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(job_id, idempotency_key),
+                FOREIGN KEY(job_id) REFERENCES generation_jobs(id),
+                FOREIGN KEY(project_id) REFERENCES projects(id),
+                FOREIGN KEY(chapter_id) REFERENCES chapters(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS generation_events (
+                id TEXT PRIMARY KEY,
+                job_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                message TEXT DEFAULT '',
+                payload TEXT DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(job_id) REFERENCES generation_jobs(id),
+                FOREIGN KEY(project_id) REFERENCES projects(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_generation_jobs_project_status
+            ON generation_jobs(project_id, status, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_generation_steps_job_status
+            ON generation_steps(job_id, status, step_order);
+
+            CREATE INDEX IF NOT EXISTS idx_generation_events_job_created
+            ON generation_events(job_id, created_at);
             """
         )
 
@@ -165,6 +234,10 @@ def init_db() -> None:
                 )
                 """
             )
+
+    from .autopilot import install_autopilot
+
+    install_autopilot()
 
 
 GENERIC_TABLES = {
