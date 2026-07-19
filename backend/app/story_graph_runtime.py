@@ -60,6 +60,25 @@ def patch_contract_runtime() -> None:
     _CONTRACT_PATCHED = True
 
 
+def _prioritize_story_graph_routes(app) -> None:
+    prefix = "/api/projects/{project_id}/story-graph"
+    routes = list(app.router.routes)
+    graph_routes = [route for route in routes if str(getattr(route, "path", "")).startswith(prefix)]
+    if not graph_routes:
+        return
+    remaining = [route for route in routes if route not in graph_routes]
+    generic_path = "/api/projects/{project_id}/{resource}"
+    insert_at = next(
+        (
+            index
+            for index, route in enumerate(remaining)
+            if str(getattr(route, "path", "")) == generic_path
+        ),
+        len(remaining),
+    )
+    app.router.routes[:] = remaining[:insert_at] + graph_routes + remaining[insert_at:]
+
+
 def install_story_graph_api() -> None:
     from . import main
     from .story_graph_api import router
@@ -68,4 +87,5 @@ def install_story_graph_api() -> None:
     if app_id in _INSTALLED_APP_IDS:
         return
     main.app.include_router(router)
+    _prioritize_story_graph_routes(main.app)
     _INSTALLED_APP_IDS.add(app_id)
