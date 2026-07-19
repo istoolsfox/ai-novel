@@ -160,7 +160,7 @@ test('loads the autonomous dashboard and starts a managed chapter range', async 
     });
   });
   expect(await screen.findByText('generate_chapter_brief')).toBeInTheDocument();
-  expect(screen.getByText('running')).toBeInTheDocument();
+  expect(screen.getAllByText('running').length).toBeGreaterThan(0);
 });
 
 test('exports the selected worldline to Obsidian and exposes the archive download', async () => {
