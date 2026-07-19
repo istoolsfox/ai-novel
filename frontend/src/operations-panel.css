@@ -1,0 +1,188 @@
+.uc-launcher-stack {
+  bottom: 1.35rem;
+  display: grid;
+  gap: 0.55rem;
+  position: fixed;
+  right: 1.35rem;
+  z-index: 80;
+}
+
+.uc-launcher-stack .uc-launcher {
+  bottom: auto;
+  position: relative;
+  right: auto;
+}
+
+.uc-launcher.ops-launcher {
+  background: linear-gradient(135deg, rgba(91, 116, 176, 0.96), rgba(111, 190, 183, 0.94));
+  color: #071016;
+}
+
+.ops-shell {
+  width: min(94vw, 1360px);
+}
+
+.ops-tabs {
+  border-bottom: 1px solid rgba(211, 224, 255, 0.12);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.75rem 1.1rem;
+}
+
+.ops-tabs button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(211, 224, 255, 0.12);
+  border-radius: 12px;
+  color: var(--muted);
+  display: inline-flex;
+  gap: 0.45rem;
+  padding: 0.65rem 0.85rem;
+}
+
+.ops-tabs button.active {
+  background: rgba(111, 190, 183, 0.15);
+  border-color: rgba(111, 190, 183, 0.48);
+  color: #eafefb;
+}
+
+.ops-content {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem 1.15rem 1.4rem;
+}
+
+.ops-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ops-warning {
+  border-color: rgba(232, 177, 83, 0.42);
+}
+
+.ops-warning li,
+.ops-danger-zone p,
+.ops-error {
+  color: #f2bd89;
+}
+
+.ops-table,
+.ops-backups,
+.ops-log-list {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.ops-table article,
+.ops-backups article {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(211, 224, 255, 0.1);
+  border-radius: 14px;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+  padding: 0.75rem;
+}
+
+.ops-table article > div,
+.ops-backups article > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.ops-table span,
+.ops-table small,
+.ops-backups span,
+.ops-backups small,
+.ops-log-list span,
+.ops-log-list small {
+  color: var(--muted);
+}
+
+.ops-table em {
+  color: #f09a91;
+  font-style: normal;
+}
+
+.ops-backups article.selected {
+  border-color: rgba(111, 190, 183, 0.58);
+}
+
+.ops-backup-main {
+  background: none;
+  border: 0;
+  color: inherit;
+  display: grid;
+  flex: 1;
+  gap: 0.2rem;
+  text-align: left;
+}
+
+.ops-backups .uc-actions {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.ops-backups a {
+  align-items: center;
+  color: inherit;
+  display: inline-flex;
+  gap: 0.35rem;
+  text-decoration: none;
+}
+
+.ops-danger-zone {
+  border-color: rgba(224, 102, 102, 0.42);
+}
+
+.ops-log-list article {
+  border-left: 2px solid rgba(111, 190, 183, 0.4);
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: minmax(150px, 190px) 1fr;
+  padding: 0.45rem 0 0.45rem 0.8rem;
+}
+
+.ops-log-list time {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.ops-log-list article > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.ops-content pre {
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 12px;
+  overflow: auto;
+  padding: 0.8rem;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+  .uc-launcher-stack {
+    bottom: 0.75rem;
+    right: 0.75rem;
+  }
+
+  .ops-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-table article,
+  .ops-backups article {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ops-log-list article {
+    grid-template-columns: 1fr;
+  }
+}
