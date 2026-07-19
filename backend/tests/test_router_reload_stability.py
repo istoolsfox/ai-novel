@@ -41,4 +41,5 @@ def test_dynamic_api_routes_survive_repeated_app_reloads(monkeypatch, tmp_path):
             assert isinstance(responses["planning"].json(), list)
             assert "exists" in responses["obsidian"].json()
             assert responses["migrations"].json()["current_version"] == 4
-            assert responses["release"].json()["version"] == "1.0.0-rc.1"
+            assert responses["release"].json()["version"] == "1.0.0"
+            assert responses["release"].json()["release_channel"] == "stable"
