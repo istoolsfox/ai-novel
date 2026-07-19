@@ -1,11 +1,11 @@
 services:
   backend:
-    image: ai-novel-backend:${AI_NOVEL_VERSION:-1.0.0-rc.1}
+    image: ai-novel-backend:${AI_NOVEL_VERSION:-1.0.0}
     build:
       context: .
       dockerfile: Dockerfile.backend
       args:
-        APP_VERSION: ${AI_NOVEL_VERSION:-1.0.0-rc.1}
+        APP_VERSION: ${AI_NOVEL_VERSION:-1.0.0}
         VCS_REF: ${AI_NOVEL_BUILD_COMMIT:-}
         BUILD_DATE: ${AI_NOVEL_BUILD_DATE:-}
     restart: unless-stopped
@@ -13,7 +13,7 @@ services:
       AI_NOVEL_DATABASE_URL: sqlite:////data/app.db
       AI_NOVEL_DATA_DIR: /data/projects
       AI_NOVEL_BACKUP_DIR: /data/backups
-      AI_NOVEL_VERSION: ${AI_NOVEL_VERSION:-1.0.0-rc.1}
+      AI_NOVEL_VERSION: ${AI_NOVEL_VERSION:-1.0.0}
       AI_NOVEL_BUILD_COMMIT: ${AI_NOVEL_BUILD_COMMIT:-}
       AI_NOVEL_BUILD_DATE: ${AI_NOVEL_BUILD_DATE:-}
       AI_NOVEL_RUNTIME_LEASE_SECONDS: ${AI_NOVEL_RUNTIME_LEASE_SECONDS:-90}
@@ -31,12 +31,12 @@ services:
       start_period: 20s
 
   worker:
-    image: ai-novel-backend:${AI_NOVEL_VERSION:-1.0.0-rc.1}
+    image: ai-novel-backend:${AI_NOVEL_VERSION:-1.0.0}
     build:
       context: .
       dockerfile: Dockerfile.backend
       args:
-        APP_VERSION: ${AI_NOVEL_VERSION:-1.0.0-rc.1}
+        APP_VERSION: ${AI_NOVEL_VERSION:-1.0.0}
         VCS_REF: ${AI_NOVEL_BUILD_COMMIT:-}
         BUILD_DATE: ${AI_NOVEL_BUILD_DATE:-}
     restart: unless-stopped
@@ -45,7 +45,7 @@ services:
       AI_NOVEL_DATABASE_URL: sqlite:////data/app.db
       AI_NOVEL_DATA_DIR: /data/projects
       AI_NOVEL_BACKUP_DIR: /data/backups
-      AI_NOVEL_VERSION: ${AI_NOVEL_VERSION:-1.0.0-rc.1}
+      AI_NOVEL_VERSION: ${AI_NOVEL_VERSION:-1.0.0}
       AI_NOVEL_BUILD_COMMIT: ${AI_NOVEL_BUILD_COMMIT:-}
       AI_NOVEL_BUILD_DATE: ${AI_NOVEL_BUILD_DATE:-}
       AI_NOVEL_RUNTIME_LEASE_SECONDS: ${AI_NOVEL_RUNTIME_LEASE_SECONDS:-90}
@@ -60,12 +60,12 @@ services:
         condition: service_healthy
 
   frontend:
-    image: ai-novel-frontend:${AI_NOVEL_VERSION:-1.0.0-rc.1}
+    image: ai-novel-frontend:${AI_NOVEL_VERSION:-1.0.0}
     build:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        APP_VERSION: ${AI_NOVEL_VERSION:-1.0.0-rc.1}
+        APP_VERSION: ${AI_NOVEL_VERSION:-1.0.0}
         VCS_REF: ${AI_NOVEL_BUILD_COMMIT:-}
         BUILD_DATE: ${AI_NOVEL_BUILD_DATE:-}
     restart: unless-stopped
