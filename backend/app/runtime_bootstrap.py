@@ -21,9 +21,11 @@ def bootstrap_runtime_reliability() -> None:
         # Existing databases receive generation job lease columns after base tables exist.
         init_runtime_schema()
 
+        from .backup_scheduler import init_backup_schedule_schema
         from . import main
         from .runtime_api import router
 
+        init_backup_schedule_schema()
         app_id = id(main.app)
         if app_id not in _INSTALLED_APP_IDS:
             main.app.include_router(router)
