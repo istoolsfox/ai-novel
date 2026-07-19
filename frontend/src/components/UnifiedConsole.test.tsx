@@ -57,7 +57,15 @@ function mockConsoleApi() {
   vi.spyOn(controlApi, 'autopilotStatus').mockResolvedValue(idleSnapshot);
   vi.spyOn(controlApi, 'memoryContext').mockResolvedValue({
     hard_facts: [{ fact_key: 'map', fact_text: '主角已经找到入口地图。', fact_status: 'confirmed', confidence: 1 }],
-    relationship_states: [],
+    relationship_states: [
+      {
+        source_character_name: '沈照夜',
+        target_character_name: '顾临舟',
+        relation_type: 'trust',
+        reason: '暂时合作',
+        status: 'active',
+      },
+    ],
     item_ownership: [],
     narrative_debts: [{ debt_key: 'owner', description: '谁控制档案馆？', status: 'open' }],
     active_foreshadowings: [],
