@@ -12,7 +12,7 @@ def test_fresh_python_process_installs_security_and_migration_layers(tmp_path):
 from backend.app.main import app, init_app
 from backend.app.database import connect
 init_app()
-paths = {route.path for route in app.routes}
+paths = {getattr(route, 'path', '') for route in app.routes}
 assert '/api/security/status' in paths
 assert '/api/migrations/status' in paths
 with connect() as conn:
