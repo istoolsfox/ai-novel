@@ -8,6 +8,11 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from .backup_scheduler import (
+    get_backup_schedule,
+    trigger_backup_schedule,
+    update_backup_schedule,
+)
 from .backup_service import (
     backup_directory,
     create_database_backup,
@@ -16,7 +21,7 @@ from .backup_service import (
     remove_database_backup,
     restore_database_backup,
 )
-from .database import connect, database_path, row_to_dict, rows_to_dicts, utc_now
+from .database import connect, database_path, rows_to_dicts, utc_now
 from .runtime_queue import runtime_diagnostics, runtime_sync_enabled, runtime_task
 from .runtime_recovery import recover_all_stale_work
 
@@ -29,6 +34,12 @@ class BackupCreateIn(BaseModel):
 
 class BackupRestoreIn(BaseModel):
     confirmation: str
+
+
+class BackupScheduleIn(BaseModel):
+    enabled: bool = False
+    interval_hours: int = Field(default=24, ge=1, le=24 * 30)
+    retention_count: int = Field(default=7, ge=1, le=100)
 
 
 def _call(operation, *args, **kwargs):
@@ -79,6 +90,7 @@ def runtime_health() -> dict[str, Any]:
     database = _database_check()
     storage = _storage_check()
     diagnostics = runtime_diagnostics()
+    schedule = get_backup_schedule()
     queued_work = (
         int(diagnostics.get("generation_jobs", {}).get("queued", 0))
         + int(diagnostics.get("generation_jobs", {}).get("running", 0))
@@ -90,12 +102,17 @@ def runtime_health() -> dict[str, Any]:
         warnings.append("队列中存在任务，但没有健康的独立 Worker。")
     if diagnostics.get("stale_generation_jobs") or diagnostics.get("stale_runtime_tasks"):
         warnings.append("检测到租约已过期的运行任务，可执行恢复。")
+    if schedule.get("enabled") and not diagnostics.get("active_workers"):
+        warnings.append("自动备份已启用，但没有健康的 Worker。")
+    if schedule.get("last_error"):
+        warnings.append("最近一次自动备份失败。")
     status = "ok" if database.get("ok") and storage.get("ok") and not warnings else "degraded"
     return {
         "status": status,
         "database": database,
         "storage": storage,
         "runtime": diagnostics,
+        "backup_schedule": schedule,
         "warnings": warnings,
         "checked_at": utc_now(),
     }
@@ -103,7 +120,7 @@ def runtime_health() -> dict[str, Any]:
 
 @router.get("/diagnostics")
 def get_runtime_diagnostics() -> dict[str, Any]:
-    return runtime_diagnostics()
+    return {**runtime_diagnostics(), "backup_schedule": get_backup_schedule()}
 
 
 @router.get("/workers")
@@ -140,18 +157,54 @@ def get_runtime_task(task_id: str) -> dict[str, Any]:
 
 
 @router.get("/events")
-def list_runtime_events(limit: int = 100) -> list[dict[str, Any]]:
+def list_runtime_events(
+    limit: int = 100,
+    event_type: str = "",
+    worker_id: str = "",
+    task_id: str = "",
+) -> list[dict[str, Any]]:
     safe_limit = max(1, min(int(limit), 500))
+    clauses: list[str] = []
+    values: list[Any] = []
+    for column, value in (("event_type", event_type), ("worker_id", worker_id), ("task_id", task_id)):
+        if value:
+            clauses.append(f"{column}=?")
+            values.append(value)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     with connect() as conn:
         events = rows_to_dicts(
-            conn.execute("SELECT * FROM runtime_events ORDER BY created_at DESC LIMIT ?", (safe_limit,)).fetchall()
+            conn.execute(
+                f"SELECT * FROM runtime_events{where} ORDER BY created_at DESC LIMIT ?",
+                (*values, safe_limit),
+            ).fetchall()
         )
+    for event in events:
+        event["payload"] = _decode(event.get("payload"))
     return events
 
 
 @router.post("/recover")
 def recover_runtime_leases() -> dict[str, Any]:
     return {"status": "completed", "recovered": recover_all_stale_work(), "recovered_at": utc_now()}
+
+
+@router.get("/backup-schedule")
+def backup_schedule() -> dict[str, Any]:
+    return get_backup_schedule()
+
+
+@router.put("/backup-schedule")
+def configure_backup_schedule(payload: BackupScheduleIn) -> dict[str, Any]:
+    return update_backup_schedule(
+        enabled=payload.enabled,
+        interval_hours=payload.interval_hours,
+        retention_count=payload.retention_count,
+    )
+
+
+@router.post("/backup-schedule/run-now")
+def run_backup_schedule_now() -> dict[str, Any]:
+    return trigger_backup_schedule()
 
 
 @router.get("/backups")
