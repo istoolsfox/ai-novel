@@ -9,9 +9,10 @@ def bootstrap_migrations_upgrade() -> None:
     if _BOOTSTRAPPED:
         return
 
-    from . import database
+    from . import database, main
     from .key_rotation import init_key_rotation_schema
     from .migration_service import auto_apply_migrations, init_migration_schema
+    from .migration_api import router
 
     original_init_db = database.init_db
 
@@ -28,13 +29,11 @@ def bootstrap_migrations_upgrade() -> None:
         if enabled:
             auto_apply_migrations()
 
-        from . import main
-        from .migration_api import router
-
         app_id = id(main.app)
         if app_id not in _INSTALLED_APP_IDS:
             main.app.include_router(router)
             _INSTALLED_APP_IDS.add(app_id)
 
     database.init_db = init_db_with_migrations
+    main.init_db = init_db_with_migrations
     _BOOTSTRAPPED = True
