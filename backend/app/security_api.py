@@ -70,7 +70,10 @@ def get_security_events(project_id: str = "", limit: int = 100) -> list[dict[str
 
 
 @router.post("/migrate-plaintext-model-configs")
-def migrate_legacy_credentials(_: None = Header(default=None), authorization: str = Header(default=""), x_ai_novel_admin_token: str = Header(default="")) -> dict[str, int]:
+def migrate_legacy_credentials(
+    authorization: str = Header(default=""),
+    x_ai_novel_admin_token: str = Header(default=""),
+) -> dict[str, int]:
     _require_admin(authorization, x_ai_novel_admin_token)
     return migrate_plaintext_model_configs()
 
