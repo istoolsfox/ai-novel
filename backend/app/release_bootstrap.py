@@ -1,5 +1,4 @@
 _BOOTSTRAPPED = False
-_INSTALLED_APP_IDS: set[int] = set()
 
 
 def bootstrap_release_candidate() -> None:
@@ -10,6 +9,7 @@ def bootstrap_release_candidate() -> None:
     from . import database, main
     from .release_migration import register_release_migration
     from .release_service import setup_state
+    from .router_install import include_router_once
 
     register_release_migration()
     original_init_db = database.init_db
@@ -20,10 +20,7 @@ def bootstrap_release_candidate() -> None:
         setup_state()
         from .release_api import router
 
-        app_id = id(main.app)
-        if app_id not in _INSTALLED_APP_IDS:
-            main.app.include_router(router)
-            _INSTALLED_APP_IDS.add(app_id)
+        include_router_once(main.app, router, marker_path="/api/release/info", marker_method="GET")
 
     database.init_db = init_db_with_release
     main.init_db = init_db_with_release
