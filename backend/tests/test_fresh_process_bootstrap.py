@@ -9,12 +9,15 @@ def test_fresh_python_process_installs_security_and_migration_layers(tmp_path):
     data_dir = tmp_path / "data"
     key_file = tmp_path / "master.key"
     script = """
+from fastapi.testclient import TestClient
 from backend.app.main import app, init_app
 from backend.app.database import connect
 init_app()
-paths = {getattr(route, 'path', '') for route in app.routes}
-assert '/api/security/status' in paths
-assert '/api/migrations/status' in paths
+with TestClient(app) as client:
+    assert client.get('/api/security/status').status_code == 200
+    migration = client.get('/api/migrations/status')
+    assert migration.status_code == 200
+    assert migration.json()['current_version'] == 3
 with connect() as conn:
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
 assert 'encrypted_credentials' in tables
