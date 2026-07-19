@@ -2,11 +2,13 @@ import { expect, test, vi } from 'vitest';
 import { api } from './api';
 import {
   installProjectSelectionBridge,
+  resetProjectSelectionBridge,
   setPreferredProjectId,
   subscribeProjectSelection,
 } from './projectSelectionBridge';
 
 test('prioritizes the console-selected project and observes editor project loads', async () => {
+  resetProjectSelectionBridge();
   const listProjects = vi.spyOn(api, 'listProjects').mockResolvedValue([
     { id: 'project-a', title: '主项目' },
     { id: 'project-b', title: '分支项目' },
