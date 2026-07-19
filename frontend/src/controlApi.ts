@@ -131,6 +131,7 @@ export type Worldline = {
   is_active?: boolean;
   project_title?: string;
   latest_chapter_number?: number;
+  chapter_count?: number;
 };
 
 export type WorldlineFamily = {
@@ -144,8 +145,35 @@ export type WorldlineFamily = {
   isolation_model: string;
 };
 
+export type WorldlineMapDiff = {
+  only_left: string[];
+  only_right: string[];
+  changed: string[];
+};
+
+export type WorldlineChapterDifference = {
+  chapter_number: number;
+  left?: JsonRecord | null;
+  right?: JsonRecord | null;
+  change: 'only_left' | 'only_right' | 'modified';
+};
+
+export type WorldlineComparison = {
+  root_project_id: string;
+  left: Worldline;
+  right: Worldline;
+  shared_prefix_chapter: number;
+  chapter_differences: WorldlineChapterDifference[];
+  memory_facts: WorldlineMapDiff;
+  story_threads: WorldlineMapDiff;
+  story_nodes: WorldlineMapDiff;
+  rolling_plan: WorldlineMapDiff;
+};
+
 export type ObsidianStatus = {
   exists?: boolean;
+  status?: string;
+  file_count?: number;
   vault_path?: string;
   archive_path?: string;
   latest_export?: JsonRecord | null;
@@ -172,8 +200,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(errorMessage(text, response.statusText));
+    const body = await response.text();
+    throw new Error(errorMessage(body, response.statusText));
   }
   return response.json() as Promise<T>;
 }
@@ -222,6 +250,10 @@ export const controlApi = {
   impactRuns: (projectId: string) => request<ImpactRun[]>(`/api/projects/${projectId}/impact/runs`),
 
   worldlines: (projectId: string) => request<WorldlineFamily>(`/api/projects/${projectId}/worldlines`),
+  compareWorldlines: (projectId: string, leftWorldlineId: string, rightWorldlineId: string) =>
+    request<WorldlineComparison>(
+      `/api/projects/${projectId}/worldlines/compare/${leftWorldlineId}/${rightWorldlineId}`,
+    ),
   forkWorldline: (projectId: string, payload: { name: string; fork_chapter_number: number; description: string }) =>
     post<Worldline>(`/api/projects/${projectId}/worldlines/fork`, payload),
   activateWorldline: (projectId: string, worldlineId: string) =>
