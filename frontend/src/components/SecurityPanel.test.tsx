@@ -48,7 +48,7 @@ test('renders masked credentials and creates a new encrypted credential', async 
   const create = vi.spyOn(securityApi, 'createCredential').mockResolvedValue(credential);
 
   render(<SecurityPanel selectedProjectId="project-1" onClose={() => undefined} />);
-  expect(await screen.findByText('安全小说')).toBeInTheDocument();
+  expect(await screen.findByText('安全状态已刷新。')).toBeInTheDocument();
   expect(screen.getByText(/sk-••••999/)).toBeInTheDocument();
   expect(screen.queryByText('real-secret')).not.toBeInTheDocument();
 
@@ -66,10 +66,10 @@ test('rotates and disables a credential without exposing the previous secret', a
   const update = vi.spyOn(securityApi, 'updateCredential').mockResolvedValue({ ...credential, rotated_at: '2026-07-20T01:00:00Z' });
 
   render(<SecurityPanel selectedProjectId="project-1" onClose={() => undefined} />);
-  await screen.findByText('安全小说');
+  await screen.findByText('安全状态已刷新。');
 
   fireEvent.change(screen.getByLabelText('轮换 API Key'), { target: { value: 'new-secret' } });
-  fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: 'credential-1' } });
+  fireEvent.change(screen.getByLabelText('凭证'), { target: { value: 'credential-1' } });
   fireEvent.click(screen.getByRole('button', { name: '轮换密钥' }));
   await waitFor(() => expect(update).toHaveBeenCalledWith('project-1', 'credential-1', { secret: 'new-secret' }));
 
