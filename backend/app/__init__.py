@@ -1,5 +1,6 @@
 from .impact_planning_bootstrap import bootstrap_impact_planning
 from .memory_bootstrap import bootstrap_layered_memory
+from .migration_bootstrap import bootstrap_migrations_upgrade
 from .obsidian_bootstrap import bootstrap_obsidian_export
 from .runtime_bootstrap import bootstrap_runtime_reliability
 from .security_bootstrap import bootstrap_security_release
@@ -13,3 +14,4 @@ bootstrap_worldlines()
 bootstrap_obsidian_export()
 bootstrap_runtime_reliability()
 bootstrap_security_release()
+bootstrap_migrations_upgrade()
