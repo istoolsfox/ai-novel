@@ -35,10 +35,19 @@ export type SecurityEvent = {
 };
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+let adminToken = '';
+
+export function setSecurityAdminToken(value: string) {
+  adminToken = value.trim();
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options?.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(adminToken ? { 'X-AI-Novel-Admin-Token': adminToken } : {}),
+      ...(options?.headers ?? {}),
+    },
     ...options,
   });
   if (!response.ok) {
