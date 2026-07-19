@@ -3,6 +3,9 @@ import importlib
 from fastapi.testclient import TestClient
 
 
+PIPELINE_STEP_COUNT = 8
+
+
 def make_client(monkeypatch, tmp_path, *, sync_worker: bool = False, disable_worker: bool = False):
     monkeypatch.setenv("AI_NOVEL_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("AI_NOVEL_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
@@ -23,6 +26,76 @@ def make_client(monkeypatch, tmp_path, *, sync_worker: bool = False, disable_wor
     return main, TestClient(main.app)
 
 
+def successful_workflow_response(workflow: str):
+    if workflow == "generate_chapter_brief":
+        return {
+            "workflow": workflow,
+            "model": "fake-model",
+            "text": '{"chapter_title":"第 1 章 · 暴雨出口","chapter_goal":"承接追捕并进入档案馆"}',
+            "structured": {
+                "chapter_title": "第 1 章 · 暴雨出口",
+                "chapter_goal": "承接追捕并进入档案馆",
+            },
+            "status": "success",
+        }
+    if workflow == "check_consistency":
+        return {
+            "workflow": workflow,
+            "model": "fake-model",
+            "text": '{"status":"pass","score":96,"issues":[],"continuity_summary":"承接正常"}',
+            "structured": {
+                "status": "pass",
+                "score": 96,
+                "issues": [],
+                "continuity_summary": "承接正常",
+            },
+            "status": "success",
+        }
+    if workflow == "extract_memory":
+        return {
+            "workflow": workflow,
+            "model": "fake-model",
+            "text": "memory",
+            "structured": {
+                "summary": "她带伤离开医院地下出口。",
+                "ending_state": {
+                    "time": "凌晨两点十五分",
+                    "location": "旧城区医院地下出口",
+                    "weather": "暴雨",
+                    "current_action": "她正在前往旧地铁站",
+                    "current_danger": "监察司仍在追捕",
+                },
+                "character_states": [
+                    {
+                        "character_id": "hero",
+                        "character_name": "沈照夜",
+                        "location": "旧城区医院地下出口",
+                        "physical_state": "左肩受伤",
+                        "emotional_state": "开始怀疑顾临舟",
+                        "current_goal": "进入地下档案馆",
+                        "alive_status": "alive",
+                        "visibility_status": "public",
+                    }
+                ],
+                "knowledge_changes": [],
+                "relationship_changes": [],
+                "open_actions": ["继续逃离医院"],
+                "open_hooks": ["监察司为何提前知道出口"],
+                "emotional_residue": ["她没有公开质问顾临舟"],
+                "forbidden_repetition": ["不能再次第一次发现档案馆"],
+                "next_chapter_seeds": ["追逐必须继续"],
+            },
+            "status": "success",
+        }
+    return {
+        "workflow": workflow,
+        "model": "fake-model",
+        "text": "雨水顺着地下出口灌进来，她捂住受伤的左肩继续向旧地铁站移动。",
+        "structured": None,
+        "status": "success",
+    }
+
+
 def test_autopilot_runs_persisted_chapter_pipeline(monkeypatch, tmp_path):
     main, client = make_client(monkeypatch, tmp_path, sync_worker=True)
     project = client.post(
@@ -33,24 +106,7 @@ def test_autopilot_runs_persisted_chapter_pipeline(monkeypatch, tmp_path):
     def fake_ai_workflow(project_id, workflow, payload):
         assert project_id == project["id"]
         assert payload.chapter_id
-        if workflow == "generate_chapter_brief":
-            return {
-                "workflow": workflow,
-                "model": "fake-model",
-                "text": '{"chapter_title":"第 1 章 · 暴雨出口","chapter_goal":"承接追捕并进入档案馆"}',
-                "structured": {
-                    "chapter_title": "第 1 章 · 暴雨出口",
-                    "chapter_goal": "承接追捕并进入档案馆",
-                },
-                "status": "success",
-            }
-        return {
-            "workflow": workflow,
-            "model": "fake-model",
-            "text": "雨水顺着地下出口灌进来，她捂住受伤的左肩继续向旧地铁站移动。",
-            "structured": None,
-            "status": "success",
-        }
+        return successful_workflow_response(workflow)
 
     monkeypatch.setattr(main, "run_ai_workflow", fake_ai_workflow)
 
@@ -63,7 +119,8 @@ def test_autopilot_runs_persisted_chapter_pipeline(monkeypatch, tmp_path):
     snapshot = response.json()
     assert snapshot["job"]["status"] == "completed"
     assert snapshot["progress"]["percent"] == 100
-    assert [step["status"] for step in snapshot["steps"]] == ["completed", "completed", "completed"]
+    assert len(snapshot["steps"]) == PIPELINE_STEP_COUNT
+    assert all(step["status"] == "completed" for step in snapshot["steps"])
 
     chapters = client.get(f"/api/projects/{project['id']}/chapters").json()
     assert len(chapters) == 1
@@ -92,7 +149,7 @@ def test_autopilot_can_pause_resume_and_stop_without_losing_steps(monkeypatch, t
     assert started.status_code == 200
     job_id = started.json()["job"]["id"]
     assert started.json()["job"]["status"] == "queued"
-    assert len(started.json()["steps"]) == 6
+    assert len(started.json()["steps"]) == PIPELINE_STEP_COUNT * 2
 
     paused = client.post(f"/api/projects/{project['id']}/autopilot/jobs/{job_id}/pause")
     assert paused.status_code == 200
@@ -101,7 +158,7 @@ def test_autopilot_can_pause_resume_and_stop_without_losing_steps(monkeypatch, t
     resumed = client.post(f"/api/projects/{project['id']}/autopilot/jobs/{job_id}/resume")
     assert resumed.status_code == 200
     assert resumed.json()["job"]["status"] == "queued"
-    assert len(resumed.json()["steps"]) == 6
+    assert len(resumed.json()["steps"]) == PIPELINE_STEP_COUNT * 2
 
     stopped = client.post(f"/api/projects/{project['id']}/autopilot/jobs/{job_id}/stop")
     assert stopped.status_code == 200
@@ -131,21 +188,7 @@ def test_failed_autopilot_step_can_be_retried(monkeypatch, tmp_path):
     assert "temporary model failure" in failed_step["error_message"]
 
     def successful_ai_workflow(_project_id, workflow, _payload):
-        if workflow == "generate_chapter_brief":
-            return {
-                "workflow": workflow,
-                "model": "fake-model",
-                "text": "brief",
-                "structured": {"chapter_title": "第 1 章 · 重试成功", "chapter_goal": "继续推进"},
-                "status": "success",
-            }
-        return {
-            "workflow": workflow,
-            "model": "fake-model",
-            "text": "重试后生成的正文。",
-            "structured": None,
-            "status": "success",
-        }
+        return successful_workflow_response(workflow)
 
     monkeypatch.setattr(main, "run_ai_workflow", successful_ai_workflow)
     retried = client.post(
