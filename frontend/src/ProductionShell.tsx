@@ -14,9 +14,15 @@ export function ProductionShell() {
   const [selectedProjectId, setSelectedProjectId] = useState(getPreferredProjectId());
   const [editorRevision, setEditorRevision] = useState(0);
 
-  useEffect(() => subscribeProjectSelection((projectId) => {
-    setSelectedProjectId((current) => (current === projectId ? current : projectId));
-  }), []);
+  useEffect(() => {
+    const synchronize = (projectId: string) => {
+      setSelectedProjectId((current) => (current === projectId ? current : projectId));
+    };
+    const unsubscribe = subscribeProjectSelection(synchronize);
+    const current = getPreferredProjectId();
+    if (current) synchronize(current);
+    return unsubscribe;
+  }, []);
 
   const selectFromConsole = useCallback((projectId: string) => {
     if (!projectId) return;
