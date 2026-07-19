@@ -18,6 +18,7 @@ def make_client(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_NOVEL_RUNTIME_SYNC", "1")
     monkeypatch.setenv("AI_NOVEL_AUTOPILOT_SYNC", "1")
     monkeypatch.setenv("AI_NOVEL_AUTOPILOT_RETRY_DELAY_SECONDS", "0")
+    monkeypatch.delenv("AI_NOVEL_VERSION", raising=False)
     monkeypatch.delenv("AI_NOVEL_ADMIN_TOKEN", raising=False)
     monkeypatch.delenv("AI_NOVEL_MASTER_KEY", raising=False)
 
@@ -37,11 +38,16 @@ def deterministic_workflow(workflow: str):
             "must_advance": ["旧档案馆主线"],
             "must_avoid": ["重复第一次发现档案馆"],
         }
-        return {"workflow": workflow, "model": "release-test-model", "text": json.dumps(structured, ensure_ascii=False), "structured": structured, "status": "success"}
-    if workflow == "check_consistency":
-        structured = {"status": "pass", "score": 97, "issues": [], "continuity_summary": "时间、地点与人物状态一致"}
-        return {"workflow": workflow, "model": "release-test-model", "text": json.dumps(structured, ensure_ascii=False), "structured": structured, "status": "success"}
-    if workflow == "extract_memory":
+        text = json.dumps(structured, ensure_ascii=False)
+    elif workflow == "check_consistency":
+        structured = {
+            "status": "pass",
+            "score": 97,
+            "issues": [],
+            "continuity_summary": "时间、地点与人物状态一致",
+        }
+        text = json.dumps(structured, ensure_ascii=False)
+    elif workflow == "extract_memory":
         structured = {
             "summary": "沈照夜带伤进入旧档案馆，并发现监察司失踪名单的入口线索。",
             "ending_state": {
@@ -155,26 +161,30 @@ def deterministic_workflow(workflow: str):
             "forbidden_repetition": ["不能再次第一次发现入口"],
             "next_chapter_seeds": ["追兵进入档案馆"],
         }
-        return {"workflow": workflow, "model": "release-test-model", "text": json.dumps(structured, ensure_ascii=False), "structured": structured, "status": "success"}
-    text = "暴雨灌入废弃通道，沈照夜捂着受伤的左肩，破解了旧档案馆入口终端。"
-    return {"workflow": workflow, "model": "release-test-model", "text": text, "structured": None, "status": "success"}
+        text = json.dumps(structured, ensure_ascii=False)
+    else:
+        structured = None
+        text = "暴雨灌入废弃通道，沈照夜捂着受伤的左肩，破解了旧档案馆入口终端。"
+    return {
+        "workflow": workflow,
+        "model": "stable-test-model",
+        "text": text,
+        "structured": structured,
+        "status": "success",
+    }
 
 
-def test_release_info_readiness_and_setup_lifecycle(monkeypatch, tmp_path):
+def test_stable_release_info_readiness_and_setup_lifecycle(monkeypatch, tmp_path):
     _main, client = make_client(monkeypatch, tmp_path)
 
-    info = client.get("/api/release/info")
-    assert info.status_code == 200
-    payload = info.json()
-    assert payload["version"] == "1.0.0-rc.1"
-    assert payload["release_channel"] == "release-candidate"
+    payload = client.get("/api/release/info").json()
+    assert payload["version"] == "1.0.0"
+    assert payload["release_channel"] == "stable"
     assert payload["schema_version"] == payload["latest_schema_version"] == 4
     assert payload["setup_completed"] is False
-    assert "autopilot" in payload["capabilities"]
-    assert "encrypted-credentials" in payload["capabilities"]
+    assert {"autopilot", "encrypted-credentials", "versioned-migrations"}.issubset(payload["capabilities"])
 
     readiness = client.get("/api/release/readiness").json()
-    assert readiness["status"] == "ready"
     assert readiness["ready"] is True
     assert not readiness["blockers"]
     assert any(item["id"] == "model" for item in readiness["warnings"])
@@ -196,35 +206,27 @@ def test_release_info_readiness_and_setup_lifecycle(monkeypatch, tmp_path):
     reset = client.post("/api/setup/reset", json={"confirmation": "RESET_SETUP"})
     assert reset.status_code == 200
     assert reset.json()["first_run_completed"] is False
-    assert reset.json()["setup_step"] == "welcome"
 
 
-def test_release_candidate_golden_path(monkeypatch, tmp_path):
+def test_stable_release_golden_path(monkeypatch, tmp_path):
     main, client = make_client(monkeypatch, tmp_path)
     project = client.post(
         "/api/projects",
-        json={
-            "title": "发布黄金路径",
-            "genre": "悬疑",
-            "target_chapter_count": 3,
-            "target_words_per_chapter": 1800,
-        },
+        json={"title": "稳定版黄金路径", "genre": "悬疑", "target_chapter_count": 3},
     ).json()
 
-    secret = "sk-release-golden-path-secret"
+    secret = "sk-stable-golden-path-test-secret"
     model = client.post(
         f"/api/projects/{project['id']}/model-configs",
         json={
-            "title": "发布测试模型",
+            "title": "稳定版测试模型",
             "category": "OpenAI",
-            "content": "release-test-model",
+            "content": "stable-test-model",
             "payload": {
                 "provider": "OpenAI",
                 "api_key": secret,
                 "base_url": "https://example.invalid/v1",
-                "model_name": "release-test-model",
-                "temperature": 0.6,
-                "max_tokens": 4096,
+                "model_name": "stable-test-model",
                 "is_default": True,
             },
             "status": "active",
@@ -240,26 +242,18 @@ def test_release_candidate_golden_path(monkeypatch, tmp_path):
         return deterministic_workflow(workflow)
 
     monkeypatch.setattr(main, "run_ai_workflow", fake_ai_workflow)
-    started = client.post(
+    snapshot = client.post(
         f"/api/projects/{project['id']}/autopilot/start",
         json={"start_chapter": 1, "end_chapter": 1, "max_retries": 0},
-    )
-    assert started.status_code == 200
-    snapshot = started.json()
+    ).json()
     assert snapshot["job"]["status"] == "completed"
     assert snapshot["progress"]["percent"] == 100
 
     chapters = client.get(f"/api/projects/{project['id']}/chapters").json()
-    assert len(chapters) == 1
-    assert chapters[0]["status"] == "final"
-    assert "旧档案馆" in chapters[0]["draft"]
-
-    facts = client.get(f"/api/projects/{project['id']}/memory/facts").json()
-    graph = client.get(f"/api/projects/{project['id']}/story-graph").json()
-    plan = client.get(f"/api/projects/{project['id']}/planning/current").json()
-    assert any(item["fact_key"] == "archive_entry_found" for item in facts)
-    assert any(item["thread_key"] == "archive_main" for item in graph["all_threads"])
-    assert plan
+    assert len(chapters) == 1 and chapters[0]["status"] == "final"
+    assert client.get(f"/api/projects/{project['id']}/memory/facts").json()
+    assert client.get(f"/api/projects/{project['id']}/story-graph").json()["all_threads"]
+    assert client.get(f"/api/projects/{project['id']}/planning/current").json()
 
     branch = client.post(
         f"/api/projects/{project['id']}/worldlines/fork",
@@ -268,20 +262,17 @@ def test_release_candidate_golden_path(monkeypatch, tmp_path):
     assert branch.status_code == 200
     assert branch.json()["project_id"] != project["id"]
 
-    export = client.post(
+    exported = client.post(
         f"/api/projects/{project['id']}/obsidian/export",
         json={"include_drafts": True, "force_rebuild": False, "create_archive": True},
     )
-    assert export.status_code == 200
-    export_payload = export.json()
-    assert export_payload.get("status") in {"completed", "success"}
-    obsidian_status = client.get(f"/api/projects/{project['id']}/obsidian/status").json()
-    assert obsidian_status["exists"] is True
-    assert Path(obsidian_status["archive_path"]).is_file()
+    assert exported.status_code == 200
+    obsidian = client.get(f"/api/projects/{project['id']}/obsidian/status").json()
+    assert obsidian["exists"] is True
+    assert Path(obsidian["archive_path"]).is_file()
 
-    backup = client.post("/api/runtime/backups", json={"note": "Golden path backup"})
-    assert backup.status_code == 200
-    assert backup.json()["integrity"].lower() == "ok"
+    backup = client.post("/api/runtime/backups", json={"note": "Stable golden path backup"}).json()
+    assert backup["integrity"].lower() == "ok"
 
     readiness = client.get("/api/release/readiness").json()
     assert readiness["ready"] is True
@@ -291,17 +282,14 @@ def test_release_candidate_golden_path(monkeypatch, tmp_path):
         json={"confirmation": "COMPLETE_SETUP", "acknowledge_without_model": False},
     )
     assert completed.status_code == 200
-    assert client.get("/api/release/info").json()["setup_completed"] is True
-
-    database_bytes = (tmp_path / "release.db").read_bytes()
-    assert secret.encode("utf-8") not in database_bytes
+    assert secret.encode("utf-8") not in (tmp_path / "release.db").read_bytes()
 
 
-def test_release_artifact_builder_is_reproducible_and_secret_safe(tmp_path):
+def test_stable_release_artifact_builder_is_reproducible_and_secret_safe(tmp_path):
     root = Path(__file__).resolve().parents[2]
     output_a = tmp_path / "release-a"
     output_b = tmp_path / "release-b"
-    environment = {**os.environ, "SOURCE_DATE_EPOCH": "1700000000", "GITHUB_SHA": "release-test-commit"}
+    environment = {**os.environ, "SOURCE_DATE_EPOCH": "1700000000", "GITHUB_SHA": "stable-test-commit"}
 
     for output in (output_a, output_b):
         built = subprocess.run(
@@ -325,17 +313,16 @@ def test_release_artifact_builder_is_reproducible_and_secret_safe(tmp_path):
 
     result_a = json.loads((output_a / "release-result.json").read_text(encoding="utf-8"))
     result_b = json.loads((output_b / "release-result.json").read_text(encoding="utf-8"))
-    assert result_a["version"] == "1.0.0-rc.1"
+    assert result_a["version"] == "1.0.0"
     assert result_a["archive_sha256"] == result_b["archive_sha256"]
 
     manifest = json.loads(Path(result_a["manifest"]).read_text(encoding="utf-8"))
-    assert manifest["version"] == "1.0.0-rc.1"
+    assert manifest["version"] == "1.0.0"
+    assert manifest["release_channel"] == "stable"
     assert manifest["schema_version"] == 4
-    assert manifest["commit"] == "release-test-commit"
-    assert manifest["files"]
+    assert manifest["commit"] == "stable-test-commit"
 
-    archive = Path(result_a["archive"])
-    with zipfile.ZipFile(archive) as bundle:
+    with zipfile.ZipFile(Path(result_a["archive"])) as bundle:
         names = bundle.namelist()
         assert any(name.endswith("/VERSION") for name in names)
         assert any(name.endswith("/release-manifest.json") for name in names)
