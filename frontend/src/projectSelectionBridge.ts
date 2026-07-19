@@ -26,6 +26,10 @@ export function subscribeProjectSelection(listener: (projectId: string) => void)
   };
 }
 
+export function resetProjectSelectionBridge() {
+  restoreBridge?.();
+}
+
 export function installProjectSelectionBridge() {
   if (installed) return restoreBridge ?? (() => undefined);
 
