@@ -1,4 +1,3 @@
-import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -141,18 +140,22 @@ def _claim_due_schedule(worker_id: str) -> dict[str, Any] | None:
         if not row.get("enabled"):
             return None
         next_run_at = str(row.get("next_run_at") or "")
-        if next_run_at and next_run_at > now:
-            return None
         lease_expires_at = str(row.get("lease_expires_at") or "")
-        if row.get("claimed_by") and lease_expires_at and lease_expires_at > now:
+        has_live_claim = bool(row.get("claimed_by") and lease_expires_at and lease_expires_at > now)
+        if has_live_claim:
             return None
+        # A stale claim may be recovered immediately even though the previous claimant
+        # already advanced next_run_at. Unclaimed schedules must actually be due.
+        if not row.get("claimed_by") and next_run_at and next_run_at > now:
+            return None
+        interval = int(row.get("interval_hours") or 24)
         updated = conn.execute(
             """
             UPDATE runtime_backup_schedules
-            SET claimed_by=?, lease_expires_at=?, updated_at=?
+            SET claimed_by=?, lease_expires_at=?, next_run_at=?, updated_at=?
             WHERE id=? AND enabled=1
             """,
-            (worker_id, _after_seconds(lease_seconds()), now, SCHEDULE_ID),
+            (worker_id, _after_seconds(lease_seconds()), _after_hours(interval), now, SCHEDULE_ID),
         ).rowcount
         if not updated:
             return None
