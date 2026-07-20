@@ -103,7 +103,7 @@ def create_database_backup(*, note: str = "", backup_kind: str = "manual") -> di
 
 def list_database_backups() -> list[dict[str, Any]]:
     backups: list[dict[str, Any]] = []
-    for manifest_path in sorted(backup_directory().glob("*.json"), reverse=True):
+    for manifest_path in backup_directory().glob("*.json"):
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
@@ -111,6 +111,9 @@ def list_database_backups() -> list[dict[str, Any]]:
         file_path = Path(str(manifest.get("file_path") or ""))
         manifest["exists"] = file_path.is_file()
         backups.append(manifest)
+    # Multiple backups can be created within the same second. Sort by the
+    # full ISO timestamp and then the unique ID rather than filename alone.
+    backups.sort(key=lambda item: (str(item.get("created_at") or ""), str(item.get("id") or "")), reverse=True)
     return backups
 
 
