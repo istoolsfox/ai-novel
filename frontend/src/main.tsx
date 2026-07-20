@@ -2,12 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import '@xyflow/react/dist/style.css';
 import './styles.css';
-import App from './App';
-import { UnifiedConsole } from './components/UnifiedConsole';
+import { ProductionShell } from './ProductionShell';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
-    <UnifiedConsole />
+    <ProductionShell />
   </React.StrictMode>,
 );
