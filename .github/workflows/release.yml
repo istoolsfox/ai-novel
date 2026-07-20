@@ -1,0 +1,63 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Create a GitHub Release after validation"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate tag and VERSION
+        shell: bash
+        run: |
+          version=$(tr -d '\r\n' < VERSION)
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            test "${GITHUB_REF_NAME}" = "v${version}"
+          fi
+          echo "RELEASE_VERSION=${version}" >> "$GITHUB_ENV"
+      - name: Build and verify source artifacts
+        env:
+          SOURCE_DATE_EPOCH: "1700000000"
+          AI_NOVEL_BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          python scripts/build_release.py --output release-dist
+          python scripts/build_release.py --output release-dist --verify
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-novel-${{ env.RELEASE_VERSION }}
+          path: |
+            release-dist/*-source.zip
+            release-dist/*-manifest.json
+            release-dist/SHA256SUMS
+            release-dist/release-result.json
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag' || inputs.publish_release == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Release ${RELEASE_VERSION}. See CHANGELOG.md for the complete release notes."
+          if gh release view "v${RELEASE_VERSION}" >/dev/null 2>&1; then
+            gh release upload "v${RELEASE_VERSION}" release-dist/*-source.zip release-dist/*-manifest.json release-dist/SHA256SUMS --clobber
+          else
+            gh release create "v${RELEASE_VERSION}" release-dist/*-source.zip release-dist/*-manifest.json release-dist/SHA256SUMS \
+              --title "AI Novel Workbench ${RELEASE_VERSION}" \
+              --notes "$notes" \
+              $([[ "${RELEASE_VERSION}" == *-* ]] && echo "--prerelease")
+          fi

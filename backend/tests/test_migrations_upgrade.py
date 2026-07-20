@@ -1,5 +1,4 @@
 import importlib
-import json
 from pathlib import Path
 
 import pytest
@@ -36,19 +35,19 @@ def test_migration_plan_apply_and_idempotency(monkeypatch, tmp_path):
     plan = client.get("/api/migrations/plan")
     assert plan.status_code == 200
     assert plan.json()["current_version"] == 0
-    assert [item["version"] for item in plan.json()["pending"]] == [1, 2, 3]
+    assert [item["version"] for item in plan.json()["pending"]] == [1, 2, 3, 4]
     assert plan.json()["can_apply"] is True
 
     applied = client.post("/api/migrations/apply", json={"confirmation": "APPLY"})
     assert applied.status_code == 200
     payload = applied.json()
-    assert payload["applied_versions"] == [1, 2, 3]
+    assert payload["applied_versions"] == [1, 2, 3, 4]
     assert payload["backup"]["kind"] == "pre_upgrade"
 
     status = client.get("/api/migrations/status").json()
     assert status["status"] == "current"
-    assert status["current_version"] == 3
-    assert len(status["applied"]) == 3
+    assert status["current_version"] == 4
+    assert len(status["applied"]) == 4
 
     second = client.post("/api/migrations/apply", json={"confirmation": "APPLY"})
     assert second.status_code == 200
@@ -112,9 +111,9 @@ def test_failed_migration_restores_snapshot_and_records_rollback(monkeypatch, tm
         conn.execute("CREATE TABLE migration_should_disappear (id TEXT PRIMARY KEY)")
         raise RuntimeError("intentional migration failure")
 
-    failing = service.Migration(4, "intentional_failure", "Exercise automatic snapshot rollback.", fail_after_schema_change)
+    failing = service.Migration(5, "intentional_failure", "Exercise automatic snapshot rollback.", fail_after_schema_change)
     monkeypatch.setattr(service, "MIGRATIONS", service.MIGRATIONS + (failing,))
-    monkeypatch.setattr(service, "LATEST_SCHEMA_VERSION", 4)
+    monkeypatch.setattr(service, "LATEST_SCHEMA_VERSION", 5)
 
     with pytest.raises(ValueError, match="database snapshot was restored"):
         service.apply_pending_migrations(confirmation="APPLY")

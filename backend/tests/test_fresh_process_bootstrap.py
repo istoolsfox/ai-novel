@@ -17,7 +17,10 @@ with TestClient(app) as client:
     assert client.get('/api/security/status').status_code == 200
     migration = client.get('/api/migrations/status')
     assert migration.status_code == 200
-    assert migration.json()['current_version'] == 3
+    assert migration.json()['current_version'] == 4
+    release = client.get('/api/release/info')
+    assert release.status_code == 200
+    assert release.json()['version'] == '1.0.0-rc.1'
 with connect() as conn:
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
 assert 'encrypted_credentials' in tables

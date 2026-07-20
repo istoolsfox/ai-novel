@@ -2,7 +2,6 @@ import json
 from typing import Any
 
 _PATCHED = False
-_INSTALLED_APP_IDS: set[int] = set()
 
 
 def _json(value: Any) -> str:
@@ -98,9 +97,13 @@ def patch_impact_planning_runtime() -> None:
 def install_impact_planning_api() -> None:
     from . import main
     from .impact_planning_api import router
+    from .router_install import include_router_once, prioritize_prefix
 
-    app_id = id(main.app)
-    if app_id in _INSTALLED_APP_IDS:
-        return
-    main.app.include_router(router)
-    _INSTALLED_APP_IDS.add(app_id)
+    include_router_once(
+        main.app,
+        router,
+        marker_path="/api/projects/{project_id}/planning/current",
+        marker_method="GET",
+    )
+    prioritize_prefix(main.app, "/api/projects/{project_id}/planning")
+    prioritize_prefix(main.app, "/api/projects/{project_id}/impact")

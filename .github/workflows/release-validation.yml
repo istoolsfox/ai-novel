@@ -1,0 +1,116 @@
+name: Release validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "agent/**"
+  workflow_dispatch:
+
+jobs:
+  source-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build reproducible release artifacts twice
+        env:
+          SOURCE_DATE_EPOCH: "1700000000"
+          AI_NOVEL_BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          python scripts/build_release.py --output release-dist/a
+          python scripts/build_release.py --output release-dist/a --verify
+          python scripts/build_release.py --output release-dist/b
+          python scripts/build_release.py --output release-dist/b --verify
+          archive_a=$(find release-dist/a -name '*-source.zip' -print -quit)
+          archive_b=$(find release-dist/b -name '*-source.zip' -print -quit)
+          test -n "$archive_a" -a -n "$archive_b"
+          test "$(sha256sum "$archive_a" | cut -d' ' -f1)" = "$(sha256sum "$archive_b" | cut -d' ' -f1)"
+          cp release-dist/a/* release-dist/
+      - name: Upload release candidate source artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-novel-release-candidate
+          path: |
+            release-dist/*-source.zip
+            release-dist/*-manifest.json
+            release-dist/SHA256SUMS
+            release-dist/release-result.json
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AI_NOVEL_PORT: "18080"
+      AI_NOVEL_VERSION: "1.0.0-rc.1"
+      AI_NOVEL_BUILD_COMMIT: ${{ github.sha }}
+      AI_NOVEL_BUILD_DATE: "2026-07-20T00:00:00Z"
+      COMPOSE_PROJECT_NAME: ai-novel-release-validation
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose model
+        run: docker compose config > compose-config.txt
+      - name: Build release images
+        run: docker compose build --pull
+      - name: Verify OCI image labels
+        run: |
+          test "$(docker image inspect ai-novel-backend:1.0.0-rc.1 --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = "1.0.0-rc.1"
+          test "$(docker image inspect ai-novel-frontend:1.0.0-rc.1 --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = "1.0.0-rc.1"
+          test "$(docker image inspect ai-novel-backend:1.0.0-rc.1 --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "${GITHUB_SHA}"
+      - name: Start release stack
+        run: docker compose up -d
+      - name: Wait for release API, frontend, and Worker
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          base = "http://127.0.0.1:18080"
+          last_error = None
+          for _ in range(90):
+              try:
+                  with urllib.request.urlopen(base + "/api/release/info", timeout=4) as response:
+                      info = json.load(response)
+                  with urllib.request.urlopen(base + "/api/runtime/health", timeout=4) as response:
+                      health = json.load(response)
+                  with urllib.request.urlopen(base + "/", timeout=4) as response:
+                      html = response.read().decode("utf-8")
+                  if (
+                      info.get("version") == "1.0.0-rc.1"
+                      and info.get("schema_version") == 4
+                      and health.get("runtime", {}).get("active_workers", 0) >= 1
+                      and "<!doctype html" in html.lower()
+                  ):
+                      print(json.dumps({"release": info, "health": health}, ensure_ascii=False, indent=2))
+                      break
+              except Exception as exc:
+                  last_error = exc
+              time.sleep(2)
+          else:
+              raise SystemExit(f"Release stack did not become ready: {last_error}")
+          PY
+      - name: Capture Compose state
+        if: always()
+        run: |
+          docker compose ps -a > compose-ps.txt || true
+          docker compose logs --no-color > compose-logs.txt 2>&1 || true
+          curl -fsS http://127.0.0.1:18080/api/release/info > release-info.json || true
+          curl -fsS http://127.0.0.1:18080/api/runtime/health > runtime-health.json || true
+      - name: Upload Docker validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-release-validation
+          path: |
+            compose-config.txt
+            compose-ps.txt
+            compose-logs.txt
+            release-info.json
+            runtime-health.json
+      - name: Stop release stack
+        if: always()
+        run: docker compose down -v --remove-orphans

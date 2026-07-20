@@ -1,7 +1,6 @@
 import os
 
 _BOOTSTRAPPED = False
-_INSTALLED_APP_IDS: set[int] = set()
 
 
 def bootstrap_migrations_upgrade() -> None:
@@ -13,6 +12,7 @@ def bootstrap_migrations_upgrade() -> None:
     from .key_rotation import init_key_rotation_schema
     from .migration_service import auto_apply_migrations, init_migration_schema
     from .migration_api import router
+    from .router_install import include_router_once
 
     original_init_db = database.init_db
 
@@ -29,10 +29,7 @@ def bootstrap_migrations_upgrade() -> None:
         if enabled:
             auto_apply_migrations()
 
-        app_id = id(main.app)
-        if app_id not in _INSTALLED_APP_IDS:
-            main.app.include_router(router)
-            _INSTALLED_APP_IDS.add(app_id)
+        include_router_once(main.app, router, marker_path="/api/migrations/status", marker_method="GET")
 
     database.init_db = init_db_with_migrations
     main.init_db = init_db_with_migrations

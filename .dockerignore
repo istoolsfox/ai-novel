@@ -2,6 +2,11 @@
 .github
 .idea
 .vscode
+.env
+*.key
+*.db
+*.sqlite
+*.sqlite3
 **/__pycache__
 **/*.pyc
 **/.pytest_cache
@@ -10,4 +15,8 @@ frontend/dist
 backend/app.db
 runtime-data
 backups
+data
+projects
+release-dist
+.runtime
 *.log
