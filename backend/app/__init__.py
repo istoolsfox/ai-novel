@@ -1,7 +1,9 @@
 from .impact_planning_bootstrap import bootstrap_impact_planning
 from .memory_bootstrap import bootstrap_layered_memory
 from .story_graph_bootstrap import bootstrap_story_graph
+from .worldline_bootstrap import bootstrap_worldlines
 
 bootstrap_layered_memory()
 bootstrap_story_graph()
 bootstrap_impact_planning()
+bootstrap_worldlines()

@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          python -m pytest backend/tests/test_mvp.py backend/tests/test_autopilot.py backend/tests/test_continuity.py backend/tests/test_layered_memory.py backend/tests/test_story_graph.py backend/tests/test_impact_planning.py -q --tb=short > pytest-output.txt 2>&1
+          python -m pytest backend/tests/test_mvp.py backend/tests/test_autopilot.py backend/tests/test_continuity.py backend/tests/test_layered_memory.py backend/tests/test_story_graph.py backend/tests/test_impact_planning.py backend/tests/test_worldlines.py -q --tb=short > pytest-output.txt 2>&1
           status=$?
           cat pytest-output.txt
           echo "status=$status" >> "$GITHUB_OUTPUT"
