@@ -2,6 +2,7 @@ fastapi
 uvicorn
 pydantic
 pytest
+httpx2
 python-multipart
 python-docx
 reportlab
