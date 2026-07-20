@@ -1,14 +1,20 @@
 $ErrorActionPreference = "Stop"
+
 $Root = Resolve-Path (Join-Path $PSScriptRoot "../..")
 Set-Location $Root
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    throw "未找到 Docker。请先安装 Docker Desktop。"
+    throw "Docker was not found. Install and start Docker Desktop first."
 }
 
-if (-not (Test-Path ".env") -and (Test-Path "deploy/.env.example")) {
-    Copy-Item "deploy/.env.example" ".env"
-    Write-Host "已从 deploy/.env.example 创建 .env。"
+$EnvFile = Join-Path $Root ".env"
+$EnvTemplate = Join-Path $Root "deploy/.env.example"
+$EnvExists = Test-Path -LiteralPath $EnvFile
+$TemplateExists = Test-Path -LiteralPath $EnvTemplate
+
+if ((-not $EnvExists) -and $TemplateExists) {
+    Copy-Item -LiteralPath $EnvTemplate -Destination $EnvFile
+    Write-Host "Created .env from deploy/.env.example."
 }
 
 $Port = "8080"
@@ -17,5 +23,9 @@ if ($env:AI_NOVEL_PORT) {
 }
 
 docker compose up -d --build
-Write-Host "AI 小说系统已启动：http://127.0.0.1:$Port"
+if ($LASTEXITCODE -ne 0) {
+    throw "Docker Compose failed with exit code $LASTEXITCODE."
+}
+
+Write-Host "AI Novel Workbench is running at http://127.0.0.1:$Port"
 docker compose ps
