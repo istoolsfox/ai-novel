@@ -1,0 +1,17 @@
+[Unit]
+Description=AI Novel FastAPI Web
+After=network.target
+
+[Service]
+Type=simple
+User=ai-novel
+Group=ai-novel
+WorkingDirectory=/opt/ai-novel
+EnvironmentFile=/etc/ai-novel.env
+ExecStart=/opt/ai-novel/.venv/bin/python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

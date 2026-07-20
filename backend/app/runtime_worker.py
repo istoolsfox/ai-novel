@@ -18,10 +18,10 @@ from .runtime_queue import (
     heartbeat_runtime_task,
     heartbeat_worker,
     recover_stale_generation_jobs,
+    recover_stale_runtime_tasks,
     register_worker,
     stop_worker,
 )
-from .runtime_recovery import recover_stale_runtime_tasks
 
 
 class RuntimeWorker:
@@ -46,6 +46,16 @@ class RuntimeWorker:
             {"poll_interval": self.poll_interval, "runtime": "sqlite-lease-worker"},
         )
         self.initialized = True
+
+    def _run_scheduled_backup(self) -> bool:
+        if self.worker_type not in {"all", "exports"}:
+            return False
+        from .backup_scheduler import run_due_backup_schedule
+
+        heartbeat_worker(self.worker_id, task_type="scheduled_backup", task_id="default")
+        result = run_due_backup_schedule(self.worker_id)
+        heartbeat_worker(self.worker_id)
+        return result is not None
 
     def _run_generation_job(self) -> bool:
         if self.worker_type not in {"all", "autopilot"}:
@@ -116,7 +126,7 @@ class RuntimeWorker:
         recover_stale_generation_jobs()
         recover_stale_runtime_tasks()
         heartbeat_worker(self.worker_id)
-        return self._run_generation_job() or self._run_runtime_task()
+        return self._run_scheduled_backup() or self._run_generation_job() or self._run_runtime_task()
 
     def run_forever(self) -> None:
         self.initialize()

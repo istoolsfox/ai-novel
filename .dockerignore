@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.vscode
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+frontend/node_modules
+frontend/dist
+backend/app.db
+runtime-data
+backups
+*.log

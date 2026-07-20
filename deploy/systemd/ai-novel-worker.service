@@ -1,0 +1,18 @@
+[Unit]
+Description=AI Novel Runtime Worker
+After=network.target ai-novel-web.service
+Requires=ai-novel-web.service
+
+[Service]
+Type=simple
+User=ai-novel
+Group=ai-novel
+WorkingDirectory=/opt/ai-novel
+EnvironmentFile=/etc/ai-novel.env
+ExecStart=/opt/ai-novel/.venv/bin/python -m backend.app.runtime_worker --poll-interval 1
+Restart=always
+RestartSec=5
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

@@ -181,6 +181,95 @@ export type ObsidianStatus = {
   [key: string]: unknown;
 };
 
+export type BackupSchedule = {
+  id: string;
+  enabled: boolean;
+  interval_hours: number;
+  retention_count: number;
+  next_run_at: string;
+  last_run_at: string;
+  last_backup_id: string;
+  last_error: string;
+  claimed_by: string;
+  lease_expires_at: string;
+};
+
+export type RuntimeWorker = {
+  id: string;
+  worker_type: string;
+  status: string;
+  hostname: string;
+  pid: number;
+  started_at: string;
+  heartbeat_at: string;
+  stopped_at: string;
+  current_task_type: string;
+  current_task_id: string;
+  healthy?: boolean;
+  metadata?: JsonRecord;
+};
+
+export type RuntimeTask = {
+  id: string;
+  project_id: string;
+  task_type: string;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  claimed_by: string;
+  error_message: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string;
+  result?: JsonRecord;
+};
+
+export type RuntimeEvent = {
+  id: string;
+  worker_id: string;
+  task_id: string;
+  project_id: string;
+  event_type: string;
+  message: string;
+  payload?: JsonRecord;
+  created_at: string;
+};
+
+export type DatabaseBackup = {
+  id: string;
+  status: string;
+  kind: string;
+  note: string;
+  file_path: string;
+  size_bytes: number;
+  sha256: string;
+  integrity: string;
+  created_at: string;
+  exists?: boolean;
+  verified?: boolean;
+};
+
+export type RuntimeHealth = {
+  status: string;
+  database: JsonRecord;
+  storage: JsonRecord;
+  runtime: {
+    workers?: RuntimeWorker[];
+    active_workers?: number;
+    runtime_tasks?: Record<string, number>;
+    runtime_task_types?: Record<string, number>;
+    generation_jobs?: Record<string, number>;
+    stale_runtime_tasks?: number;
+    stale_generation_jobs?: number;
+    lease_seconds?: number;
+    heartbeat_seconds?: number;
+    [key: string]: unknown;
+  };
+  backup_schedule: BackupSchedule;
+  warnings: string[];
+  checked_at: string;
+};
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 
 function errorMessage(text: string, fallback: string): string {
@@ -211,6 +300,14 @@ function post<T>(path: string, payload?: unknown): Promise<T> {
     method: 'POST',
     body: payload === undefined ? undefined : JSON.stringify(payload),
   });
+}
+
+function put<T>(path: string, payload: unknown): Promise<T> {
+  return request<T>(path, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+function remove<T>(path: string): Promise<T> {
+  return request<T>(path, { method: 'DELETE' });
 }
 
 export const controlApi = {
@@ -269,4 +366,20 @@ export const controlApi = {
     payload: { include_drafts: boolean; force_rebuild: boolean; create_archive: boolean },
   ) => post<JsonRecord>(`/api/projects/${projectId}/obsidian/export`, payload),
   obsidianDownloadUrl: (projectId: string) => `${API_BASE}/api/projects/${projectId}/obsidian/download`,
+
+  runtimeHealth: () => request<RuntimeHealth>('/api/runtime/health'),
+  runtimeWorkers: () => request<RuntimeWorker[]>('/api/runtime/workers'),
+  runtimeTasks: () => request<RuntimeTask[]>('/api/runtime/tasks?limit=100'),
+  runtimeEvents: () => request<RuntimeEvent[]>('/api/runtime/events?limit=100'),
+  recoverRuntime: () => post<JsonRecord>('/api/runtime/recover'),
+  backupSchedule: () => request<BackupSchedule>('/api/runtime/backup-schedule'),
+  updateBackupSchedule: (payload: { enabled: boolean; interval_hours: number; retention_count: number }) =>
+    put<BackupSchedule>('/api/runtime/backup-schedule', payload),
+  triggerBackupSchedule: () => post<BackupSchedule>('/api/runtime/backup-schedule/run-now'),
+  backups: () => request<DatabaseBackup[]>('/api/runtime/backups'),
+  createBackup: (note: string) => post<DatabaseBackup>('/api/runtime/backups', { note }),
+  verifyBackup: (backupId: string) => request<DatabaseBackup>(`/api/runtime/backups/${backupId}?verify=true`),
+  restoreBackup: (backupId: string) => post<JsonRecord>(`/api/runtime/backups/${backupId}/restore`, { confirmation: 'RESTORE' }),
+  deleteBackup: (backupId: string) => remove<JsonRecord>(`/api/runtime/backups/${backupId}`),
+  backupDownloadUrl: (backupId: string) => `${API_BASE}/api/runtime/backups/${backupId}/download`,
 };
