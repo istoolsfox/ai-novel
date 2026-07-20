@@ -11,6 +11,12 @@ from .obsidian_exporter import (
     remove_obsidian_export,
     require_obsidian_export,
 )
+from .runtime_queue import (
+    enqueue_runtime_task,
+    latest_runtime_task,
+    runtime_sync_enabled,
+    runtime_task,
+)
 from .storage import project_root, require_project
 
 router = APIRouter(prefix="/api/projects/{project_id}/obsidian", tags=["obsidian"])
@@ -34,25 +40,70 @@ def _call(operation, *args, **kwargs):
 @router.post("/export")
 def create_obsidian_export(project_id: str, payload: ObsidianExportIn) -> dict[str, Any]:
     require_project(project_id)
-    return _call(
-        export_obsidian_vault,
-        project_id,
-        include_drafts=payload.include_drafts,
-        force_rebuild=payload.force_rebuild,
-        create_archive=payload.create_archive,
+    options = {
+        "include_drafts": payload.include_drafts,
+        "force_rebuild": payload.force_rebuild,
+        "create_archive": payload.create_archive,
+    }
+    if runtime_sync_enabled():
+        return _call(export_obsidian_vault, project_id, **options)
+
+    task = enqueue_runtime_task(
+        "obsidian_export",
+        project_id=project_id,
+        payload=options,
+        priority=80,
+        max_attempts=3,
+        deduplicate_active=True,
     )
+    return {
+        "project_id": project_id,
+        "status": task.get("status", "queued"),
+        "task_id": task.get("id", ""),
+        "task": task,
+        "message": "Obsidian 导出任务已进入独立 Worker 队列。",
+    }
 
 
 @router.get("/status")
 def obsidian_export_status(project_id: str) -> dict[str, Any]:
     require_project(project_id)
     export = get_obsidian_export(project_id)
-    return export or {
+    task = latest_runtime_task(project_id, "obsidian_export")
+    task_is_newer = bool(
+        task
+        and (
+            not export
+            or str(task.get("created_at") or "") >= str(export.get("updated_at") or "")
+        )
+    )
+    if task_is_newer and task and task.get("status") in {"queued", "running", "failed"}:
+        return {
+            **(export or {}),
+            "project_id": project_id,
+            "status": task.get("status"),
+            "task_id": task.get("id", ""),
+            "task": task,
+            "file_count": int((export or {}).get("file_count") or 0),
+        }
+    if export:
+        return {**export, "task": task}
+    return {
         "project_id": project_id,
         "status": "not_exported",
         "files": [],
         "file_count": 0,
+        "task": task,
     }
+
+
+@router.get("/jobs/{task_id}")
+def obsidian_export_job(project_id: str, task_id: str) -> dict[str, Any]:
+    require_project(project_id)
+    task = runtime_task(task_id)
+    if not task or task.get("project_id") != project_id or task.get("task_type") != "obsidian_export":
+        raise HTTPException(status_code=404, detail="Obsidian export task not found")
+    return task
 
 
 @router.get("/manifest")
@@ -86,4 +137,7 @@ def download_obsidian_export(project_id: str):
 @router.delete("/export")
 def delete_obsidian_export(project_id: str) -> dict[str, bool]:
     require_project(project_id)
+    task = latest_runtime_task(project_id, "obsidian_export")
+    if task and task.get("status") in {"queued", "running"}:
+        raise HTTPException(status_code=409, detail="Obsidian export is still queued or running")
     return _call(remove_obsidian_export, project_id)
