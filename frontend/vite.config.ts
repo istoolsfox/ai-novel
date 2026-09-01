@@ -8,8 +8,10 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
   },
   server: {
+    port: 5173,
+    host: '127.0.0.1',
     proxy: {
-      '/api': 'http://127.0.0.1:8000',
+      '/api': 'http://127.0.0.1:8080',
     },
   },
 });

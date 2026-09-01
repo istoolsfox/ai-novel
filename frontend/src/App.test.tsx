@@ -65,13 +65,11 @@ test('renders the local AI novel workbench shell', () => {
   render(<App />);
   expect(screen.getByText('AI 小说创作平台')).toBeInTheDocument();
   expect(screen.getByText('项目库')).toBeInTheDocument();
-  expect(screen.getByText(/CLAUDE\.md/)).toBeInTheDocument();
   expect(screen.getAllByText('章节编辑器').length).toBeGreaterThan(0);
   expect(screen.getAllByText('正文写作、AI 续写、章节版本与定稿').length).toBeGreaterThan(0);
   expect(screen.getAllByText('llmwiki 记忆').length).toBeGreaterThan(0);
   expect(screen.getByText('Novel Editor')).toBeInTheDocument();
   expect(screen.getByText('AI 创作副驾驶')).toBeInTheDocument();
-  expect(screen.getByText('专注模式')).toBeInTheDocument();
   expect(screen.getByText('续写当前章节')).toBeInTheDocument();
   expect(screen.getByText('插入正文')).toBeInTheDocument();
   expect(screen.getByLabelText('章节选择')).toBeInTheDocument();
@@ -81,18 +79,7 @@ test('renders the local AI novel workbench shell', () => {
 
 test('renders settings entry and model configuration form', () => {
   render(<App />);
-  fireEvent.click(screen.getByText('设置'));
-  expect(screen.getAllByText('账户与同步').length).toBeGreaterThan(0);
-  expect(screen.getAllByText('本地模式').length).toBeGreaterThan(0);
-  expect(screen.getByText('继续本地使用')).toBeInTheDocument();
-  expect(screen.getByText('OAuth 登录')).toBeInTheDocument();
-  expect(screen.getAllByText('模型配置').length).toBeGreaterThan(0);
-  fireEvent.click(screen.getByRole('button', { name: /模型配置/ }));
-  expect(screen.getByLabelText('配置名称')).toBeInTheDocument();
-  expect(screen.getByLabelText('API Key')).toBeInTheDocument();
-  expect(screen.getAllByText('任务路由').length).toBeGreaterThan(0);
-  fireEvent.click(screen.getByRole('button', { name: /调用状态/ }));
-  expect(screen.getByText('测试连接')).toBeInTheDocument();
+  expect(screen.queryByText('设置')).not.toBeInTheDocument();
 });
 
 test('renders dedicated style learning workflow', () => {
@@ -111,9 +98,9 @@ test('renders dedicated style learning workflow', () => {
 test('starts the default chapter tab in focused writing mode', () => {
   render(<App />);
 
-  expect(screen.getByText('写作工作台')).toBeInTheDocument();
-  expect(screen.getByText(/CLAUDE\.md/)).toBeInTheDocument();
+  expect(screen.getByText('沉浸式小说创作空间')).toBeInTheDocument();
   expect(screen.queryByLabelText('当前功能说明')).not.toBeInTheDocument();
+  expect(screen.queryByText('专注模式')).not.toBeInTheDocument();
 });
 
 test('loads wiki page count for the selected project outside the wiki tab', async () => {
@@ -1418,7 +1405,6 @@ test('shows a global execution indicator while generating chapter content', asyn
   fireEvent.click(screen.getByText('一键生成本章正文'));
 
   expect(await screen.findByText('正在执行：生成本章正文')).toBeInTheDocument();
-  expect(screen.getAllByText(/请求后端读取章节、大纲、角色和 llmwiki 上下文|统一压缩写作资产/).length).toBeGreaterThan(0);
 
   await act(async () => {
     generation.resolve({
@@ -1430,70 +1416,6 @@ test('shows a global execution indicator while generating chapter content', asyn
   });
 
   expect(await screen.findByText('执行完成：生成本章正文')).toBeInTheDocument();
-});
-
-test('shows a global execution indicator while saving model configuration', async () => {
-  mockProjectApi();
-  const saveModel = deferred<GenericRecord>();
-  vi.spyOn(api, 'createRecord').mockReturnValue(saveModel.promise);
-
-  render(<App />);
-  await screen.findByRole('button', { name: /测试项目/ });
-  fireEvent.click(screen.getByText('设置'));
-  fireEvent.click(screen.getByRole('button', { name: /模型配置/ }));
-  fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'sk-test' } });
-  fireEvent.change(screen.getByLabelText('Model Name'), { target: { value: 'gpt-test' } });
-  fireEvent.click(screen.getByText('保存配置'));
-
-  expect(await screen.findByText('正在执行：保存模型配置')).toBeInTheDocument();
-  expect(screen.getAllByText(/正在写入当前项目的模型配置/).length).toBeGreaterThan(0);
-
-  await act(async () => {
-    saveModel.resolve({
-      id: 'model-1',
-      title: 'gpt-test',
-      category: 'OpenAI',
-      content: 'gpt-test',
-      status: 'active',
-    });
-  });
-
-  expect(await screen.findByText('执行完成：保存模型配置')).toBeInTheDocument();
-});
-
-test('connection test uses model connection endpoint and refuses empty model form', async () => {
-  mockProjectApi();
-  const runAi = vi.spyOn(api, 'runAi').mockResolvedValue({
-    workflow: 'analyze_style_sample',
-    text: '不应该用普通 AI 工作流测试连接',
-    score: 0,
-    items: [],
-  });
-  const testModelConnection = vi.spyOn(api, 'testModelConnection').mockResolvedValue({
-    ok: true,
-    model: 'gpt-test',
-    message: '远程模型连接成功。',
-  });
-
-  render(<App />);
-  await screen.findByRole('button', { name: /测试项目/ });
-  fireEvent.click(screen.getByText('设置'));
-  fireEvent.click(screen.getByRole('button', { name: /模型配置/ }));
-  fireEvent.change(screen.getByLabelText('配置名称'), { target: { value: '测试模型' } });
-  fireEvent.change(screen.getByPlaceholderText('sk-...'), { target: { value: 'sk-test' } });
-  fireEvent.change(screen.getByPlaceholderText('gpt-4o-mini'), { target: { value: 'gpt-test' } });
-  fireEvent.click(screen.getByRole('button', { name: /测试连接/ }));
-
-  await waitFor(() => expect(testModelConnection).toHaveBeenCalled());
-  expect(testModelConnection).toHaveBeenCalledWith(
-    mockProject.id,
-    expect.objectContaining({
-      api_key: 'sk-test',
-      model_name: 'gpt-test',
-    }),
-  );
-  expect(runAi).not.toHaveBeenCalled();
-  expect((await screen.findAllByText(/连接测试成功/)).length).toBeGreaterThan(0);
 });
 
 test('renders dedicated timeline foreshadowing taboo and knowledge workbenches', async () => {

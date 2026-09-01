@@ -34,7 +34,7 @@ function renderNovelEditorPage(draft = '重复 目标 重复 目标') {
       onScoreChapter={vi.fn()}
       onFinalizeChapter={vi.fn()}
       onSelectVersion={vi.fn()}
-      onOpenSettings={vi.fn()}
+
       onOpenResource={onOpenResource}
       onLog={onLog}
     />
@@ -87,7 +87,7 @@ test('appends AI result instead of replacing a stale selected range after draft 
       onScoreChapter={vi.fn()}
       onFinalizeChapter={vi.fn()}
       onSelectVersion={vi.fn()}
-      onOpenSettings={vi.fn()}
+
       onOpenResource={vi.fn()}
       onLog={vi.fn()}
     />
@@ -130,7 +130,7 @@ test('appends AI result when external draft changes but same range still has sam
       onScoreChapter={vi.fn()}
       onFinalizeChapter={vi.fn()}
       onSelectVersion={vi.fn()}
-      onOpenSettings={vi.fn()}
+
       onOpenResource={vi.fn()}
       onLog={onLog}
     />
@@ -221,7 +221,7 @@ test('displays and inserts only clean chapter prose from structured draft JSON',
       onScoreChapter={vi.fn()}
       onFinalizeChapter={vi.fn()}
       onSelectVersion={vi.fn()}
-      onOpenSettings={vi.fn()}
+
       onOpenResource={vi.fn()}
       onLog={vi.fn()}
     />,
@@ -312,7 +312,7 @@ test('deletes the selected chapter from the chapter tree after confirmation', ()
       onScoreChapter={vi.fn()}
       onFinalizeChapter={vi.fn()}
       onSelectVersion={vi.fn()}
-      onOpenSettings={vi.fn()}
+
       onOpenResource={vi.fn()}
       onLog={vi.fn()}
     />,

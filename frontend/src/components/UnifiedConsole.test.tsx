@@ -138,7 +138,7 @@ test('loads the autonomous dashboard and starts a managed chapter range', async 
   const start = vi.spyOn(controlApi, 'startAutopilot').mockResolvedValue(runningSnapshot);
 
   render(<UnifiedConsole />);
-  fireEvent.click(screen.getByRole('button', { name: '打开统一托管控制台' }));
+  fireEvent.click(screen.getByRole('button', { name: '打开托管控制台' }));
 
   expect(await screen.findByRole('dialog', { name: '统一托管控制台' })).toBeInTheDocument();
   expect(await screen.findByText('1 条关系状态')).toBeInTheDocument();
@@ -177,7 +177,7 @@ test('exports the selected worldline to Obsidian and exposes the archive downloa
     });
 
   render(<UnifiedConsole />);
-  fireEvent.click(screen.getByRole('button', { name: '打开统一托管控制台' }));
+  fireEvent.click(screen.getByRole('button', { name: '打开托管控制台' }));
   await screen.findByRole('dialog', { name: '统一托管控制台' });
   fireEvent.click(screen.getByRole('button', { name: /Obsidian/ }));
   fireEvent.click(screen.getByRole('button', { name: '生成 Vault 与 ZIP' }));

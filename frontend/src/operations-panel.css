@@ -1,16 +1,17 @@
 .uc-launcher-stack {
-  bottom: 1.35rem;
-  display: grid;
-  gap: 0.55rem;
-  position: fixed;
-  right: 1.35rem;
-  z-index: 80;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
 }
 
 .uc-launcher-stack .uc-launcher {
   bottom: auto;
   position: relative;
   right: auto;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22), 0 0 20px rgba(213, 173, 104, 0.14);
+  padding: 0.55rem 0.85rem;
+  z-index: auto;
 }
 
 .uc-launcher.ops-launcher {
@@ -168,8 +169,8 @@
 
 @media (max-width: 760px) {
   .uc-launcher-stack {
-    bottom: 0.75rem;
-    right: 0.75rem;
+    bottom: auto;
+    right: auto;
   }
 
   .ops-grid {

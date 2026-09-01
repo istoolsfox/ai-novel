@@ -10,13 +10,10 @@ import {
   FileDown,
   GitBranch,
   Library,
-  Maximize2,
-  Minimize2,
   PenLine,
   Plus,
   RefreshCw,
   Search,
-  Settings,
   Sparkles,
   Trash2,
   Wand2,
@@ -142,7 +139,6 @@ type NovelEditorPageProps = {
   onScoreChapter: () => void;
   onFinalizeChapter: () => void;
   onSelectVersion: (versionId: string) => void;
-  onOpenSettings: () => void;
   onOpenResource: (resource: 'characters' | 'outline' | 'knowledge') => void;
   onLog: (message: string) => void;
 };
@@ -171,13 +167,11 @@ export function NovelEditorPage({
   onScoreChapter,
   onFinalizeChapter,
   onSelectVersion,
-  onOpenSettings,
   onOpenResource,
   onLog,
 }: NovelEditorPageProps) {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
-  const [focusMode, setFocusMode] = useState(false);
   const [chapterOrder, setChapterOrder] = useState<'asc' | 'desc'>('asc');
   const [chapterSearch, setChapterSearch] = useState('');
   const [selectedRange, setSelectedRange] = useState<SelectionRange | null>(null);
@@ -321,33 +315,28 @@ export function NovelEditorPage({
   }
 
   return (
-    <EditorLayout focusMode={focusMode} leftCollapsed={leftCollapsed} rightCollapsed={rightCollapsed}>
-      {!focusMode && (
-        <NovelSidebar
-          collapsed={leftCollapsed}
-          project={project}
-          chapters={visibleChapters}
-          selectedChapter={selectedChapter}
-          chapterSearch={chapterSearch}
-          chapterOrder={chapterOrder}
-          onToggle={() => setLeftCollapsed(!leftCollapsed)}
-          onSearch={setChapterSearch}
-          onOrderChange={setChapterOrder}
-          onSelectChapter={onSelectChapter}
-          onCreateChapter={onCreateChapter}
-          onDeleteChapter={onDeleteChapter}
-          onOpenSettings={onOpenSettings}
-          onOpenResource={onOpenResource}
-        />
-      )}
+    <EditorLayout leftCollapsed={leftCollapsed} rightCollapsed={rightCollapsed}>
+      <NovelSidebar
+        collapsed={leftCollapsed}
+        project={project}
+        chapters={visibleChapters}
+        selectedChapter={selectedChapter}
+        chapterSearch={chapterSearch}
+        chapterOrder={chapterOrder}
+        onToggle={() => setLeftCollapsed(!leftCollapsed)}
+        onSearch={setChapterSearch}
+        onOrderChange={setChapterOrder}
+        onSelectChapter={onSelectChapter}
+        onCreateChapter={onCreateChapter}
+        onDeleteChapter={onDeleteChapter}
+        onOpenResource={onOpenResource}
+      />
 
       <main className="novel-editor-main">
         <EditorHeader
           project={project}
           selectedChapter={selectedChapter}
           wordCount={wordCount}
-          focusMode={focusMode}
-          onToggleFocus={() => setFocusMode(!focusMode)}
           onTitleChange={onChapterTitleChange}
           onSave={onSaveChapter}
           onExport={onFinalizeChapter}
@@ -371,59 +360,54 @@ export function NovelEditorPage({
         />
       </main>
 
-      {!focusMode && (
-        <AIAssistantPanel
-          collapsed={rightCollapsed}
-          prompt={prompt}
-          tone={tone}
-          style={style}
-          length={length}
-          viewpoint={viewpoint}
-          styleProfiles={styleProfiles}
-          selectedStyleProfileId={selectedStyleProfileId}
-          isGenerating={isGenerating}
-          aiResults={aiResults}
-          hasSelectedRange={hasSelectedRange}
-          versions={versions}
-          modelLabel={modelLabel}
-          wikiPageCount={wikiPageCount}
-          onToggle={() => setRightCollapsed(!rightCollapsed)}
-          onPromptChange={setPrompt}
-          onToneChange={setTone}
-          onStyleChange={setStyle}
-          onStyleProfileChange={onStyleProfileChange}
-          onLengthChange={setLength}
-          onViewpointChange={setViewpoint}
-          onAction={createAiResult}
-          onGenerateVariant={onGenerateVariant}
-          onScoreChapter={onScoreChapter}
-          onInsert={insertResult}
-          onReplace={replaceSelection}
-          onRegenerate={createAiResult}
-          onSaveVersion={onSaveAiResultAsVersion}
-          onFavorite={favoriteResult}
-          onDeleteResult={deleteAiResult}
-          onSelectVersion={onSelectVersion}
-        />
-      )}
+      <AIAssistantPanel
+        collapsed={rightCollapsed}
+        prompt={prompt}
+        tone={tone}
+        style={style}
+        length={length}
+        viewpoint={viewpoint}
+        styleProfiles={styleProfiles}
+        selectedStyleProfileId={selectedStyleProfileId}
+        isGenerating={isGenerating}
+        aiResults={aiResults}
+        hasSelectedRange={hasSelectedRange}
+        versions={versions}
+        modelLabel={modelLabel}
+        wikiPageCount={wikiPageCount}
+        onToggle={() => setRightCollapsed(!rightCollapsed)}
+        onPromptChange={setPrompt}
+        onToneChange={setTone}
+        onStyleChange={setStyle}
+        onStyleProfileChange={onStyleProfileChange}
+        onLengthChange={setLength}
+        onViewpointChange={setViewpoint}
+        onAction={createAiResult}
+        onGenerateVariant={onGenerateVariant}
+        onScoreChapter={onScoreChapter}
+        onInsert={insertResult}
+        onReplace={replaceSelection}
+        onRegenerate={createAiResult}
+        onSaveVersion={onSaveAiResultAsVersion}
+        onFavorite={favoriteResult}
+        onDeleteResult={deleteAiResult}
+        onSelectVersion={onSelectVersion}
+      />
     </EditorLayout>
   );
 }
 
 function EditorLayout({
   children,
-  focusMode,
   leftCollapsed,
   rightCollapsed,
 }: {
   children: ReactNode;
-  focusMode: boolean;
   leftCollapsed: boolean;
   rightCollapsed: boolean;
 }) {
   const className = [
     'novel-editor-page',
-    focusMode ? 'focus-mode' : '',
     leftCollapsed ? 'left-collapsed' : '',
     rightCollapsed ? 'right-collapsed' : '',
   ].join(' ');
@@ -443,7 +427,6 @@ function NovelSidebar({
   onSelectChapter,
   onCreateChapter,
   onDeleteChapter,
-  onOpenSettings,
   onOpenResource,
 }: {
   collapsed: boolean;
@@ -458,7 +441,6 @@ function NovelSidebar({
   onSelectChapter: (chapter: Chapter) => void;
   onCreateChapter: () => void;
   onDeleteChapter: (chapter: Chapter) => void;
-  onOpenSettings: () => void;
   onOpenResource: (resource: 'characters' | 'outline' | 'knowledge') => void;
 }) {
   return (
@@ -530,10 +512,6 @@ function NovelSidebar({
             <span>最近编辑</span>
             <p>{selectedChapter ? `刚刚更新：第 ${selectedChapter.chapter_number} 章` : '还没有编辑记录'}</p>
           </div>
-          <button className="sidebar-settings" onClick={onOpenSettings}>
-            <Settings size={15} />
-            设置与 API
-          </button>
         </>
       )}
     </aside>
@@ -610,8 +588,6 @@ function EditorHeader({
   project,
   selectedChapter,
   wordCount,
-  focusMode,
-  onToggleFocus,
   onTitleChange,
   onSave,
   onExport,
@@ -619,8 +595,6 @@ function EditorHeader({
   project: Project | null;
   selectedChapter: Chapter | null;
   wordCount: number;
-  focusMode: boolean;
-  onToggleFocus: () => void;
   onTitleChange: (title: string) => void;
   onSave: () => void;
   onExport: () => void;
@@ -640,19 +614,9 @@ function EditorHeader({
       </div>
       <div className="editor-header-actions">
         <button onClick={onSave}><PenLine size={15} />保存</button>
-        <FocusModeToggle active={focusMode} onToggle={onToggleFocus} />
         <button onClick={onExport}><FileDown size={15} />发布 / 导出</button>
       </div>
     </header>
-  );
-}
-
-function FocusModeToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
-  return (
-    <button onClick={onToggle}>
-      {active ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-      专注模式
-    </button>
   );
 }
 

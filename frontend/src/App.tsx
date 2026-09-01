@@ -4,31 +4,21 @@ import {
   BookOpen,
   Brain,
   CheckCircle2,
-  Cloud,
-  CloudOff,
   Download,
   FileText,
   GitBranch,
   Library,
   LoaderCircle,
-  LogOut,
   Network,
   PenLine,
   Plus,
-  Save,
-  Settings,
   ShieldAlert,
   Sparkles,
   Star,
   Trash2,
-  Wifi,
-  Eye,
-  EyeOff,
-  UserCircle,
 } from 'lucide-react';
 import {
   api,
-  AuthStatus,
   Chapter,
   ChapterVersion,
   CharacterProfilePayload,
@@ -65,10 +55,7 @@ type TabKey =
   | 'taboo'
   | 'knowledge'
   | 'wiki'
-  | 'settings'
   | 'export';
-
-type SettingsSection = 'account' | 'models' | 'routes' | 'privacy' | 'status';
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof BookOpen; description: string }> = [
   { key: 'chapters', label: '章节编辑器', icon: PenLine, description: '正文写作、AI 续写、章节版本与定稿' },
@@ -95,84 +82,8 @@ const resourceMap: Record<TabKey, string | null> = {
   taboo: 'taboo-rules',
   knowledge: 'knowledge-documents',
   wiki: null,
-  settings: null,
   export: null,
 };
-
-const providerOptions = [
-  'OpenAI',
-  'DeepSeek',
-  'Xiaomi MiMo',
-  'MiniMax',
-  'Claude Compatible',
-  'Gemini Compatible',
-  'Ollama',
-  '自定义 OpenAI-compatible',
-];
-
-const providerPresets: Record<string, Pick<ModelPayload, 'base_url' | 'model_name' | 'temperature' | 'max_tokens'>> = {
-  OpenAI: {
-    base_url: 'https://api.openai.com/v1',
-    model_name: 'gpt-4o-mini',
-    temperature: 0.7,
-    max_tokens: 4000,
-  },
-  DeepSeek: {
-    base_url: 'https://api.deepseek.com/v1',
-    model_name: 'deepseek-chat',
-    temperature: 0.7,
-    max_tokens: 8000,
-  },
-  'Xiaomi MiMo': {
-    base_url: 'https://api.xiaomimimo.com/v1',
-    model_name: 'mimo-v2.5-pro',
-    temperature: 0.7,
-    max_tokens: 8000,
-  },
-  MiniMax: {
-    base_url: 'https://api.minimax.io/v1',
-    model_name: 'MiniMax-M3',
-    temperature: 0.7,
-    max_tokens: 8000,
-  },
-  Ollama: {
-    base_url: 'http://127.0.0.1:11434/v1',
-    model_name: 'qwen2.5:14b',
-    temperature: 0.7,
-    max_tokens: 4000,
-  },
-};
-
-const workflowOptions = [
-  { key: 'generate_chapter_variants', label: '章节正文生成' },
-  { key: 'generate_chapter_draft', label: '章节草稿生成' },
-  { key: 'generate_outline', label: '多章大纲生成' },
-  { key: 'generate_chapter_brief', label: '章节梗概扩展' },
-  { key: 'score_chapter', label: '章节评分' },
-  { key: 'summarize_chapter', label: '章节摘要' },
-  { key: 'extract_memory', label: '记忆提取' },
-  { key: 'check_consistency', label: '一致性检查' },
-  { key: 'analyze_style_sample', label: '风格分析' },
-  { key: 'generate_emotion_seed', label: '情感种子' },
-  { key: 'emotion_archaeology', label: '五层情感考古' },
-  { key: 'dialogue_subtext_excavation', label: '对话潜台词' },
-  { key: 'analyze_reader_pull', label: '追读力检查' },
-  { key: 'deepen_and_bury', label: '情感加深藏回' },
-  { key: 'anti_ai_polish', label: '去 AI 味' },
-];
-
-const settingsSections: Array<{ key: SettingsSection; title: string; description: string }> = [
-  { key: 'account', title: '账户与同步', description: '本地模式、OAuth 登录和同步边界' },
-  { key: 'models', title: '模型配置', description: '管理 OpenAI-compatible 模型' },
-  { key: 'routes', title: '任务路由', description: '为不同 AI 任务选择模型' },
-  { key: 'privacy', title: '隐私模式', description: '确认本地优先和上传边界' },
-  { key: 'status', title: '调用状态', description: '查看远程 API、错误和调用状态' },
-];
-
-const settingsTitleMap = settingsSections.reduce<Record<SettingsSection, string>>((acc, item) => {
-  acc[item.key] = item.title;
-  return acc;
-}, {} as Record<SettingsSection, string>);
 
 type ModelPayload = {
   provider: string;
@@ -200,22 +111,6 @@ type GenerateChapterDraftPayload = {
   selectedText: string;
   emotionalIntent?: string;
   mode: 'draft' | 'continue' | 'revise';
-};
-
-type ModelForm = {
-  id?: string;
-  title: string;
-} & ModelPayload;
-
-const emptyModelForm: ModelForm = {
-  title: '',
-  provider: 'OpenAI',
-  api_key: '',
-  base_url: 'https://api.openai.com/v1',
-  model_name: '',
-  temperature: 0.7,
-  max_tokens: 4000,
-  is_default: false,
 };
 
 const emptyCharacterForm: CharacterProfilePayload = {
@@ -290,14 +185,6 @@ const emptyKnowledgeForm: KnowledgeDocumentPayload = {
   wiki_path: 'knowledge/source.md',
 };
 
-const localAuthStatus: AuthStatus = {
-  mode: 'local',
-  authenticated: false,
-  user: null,
-  sync_enabled: false,
-  message: '本地模式：无需登录即可完整使用项目、章节、记忆、导出和本地 API 配置。',
-};
-
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -321,11 +208,6 @@ export default function App() {
   const [projectTitle, setProjectTitle] = useState('前朝公主');
   const [recordTitle, setRecordTitle] = useState('');
   const [recordContent, setRecordContent] = useState('');
-  const [modelForm, setModelForm] = useState<ModelForm>(emptyModelForm);
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [privacyMode, setPrivacyMode] = useState(true);
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>('account');
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(localAuthStatus);
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null);
   const [deleteProjectPassword, setDeleteProjectPassword] = useState('');
   const [styleSampleTitle, setStyleSampleTitle] = useState('未命名风格样本');
@@ -396,7 +278,6 @@ export default function App() {
 
   useEffect(() => {
     void loadProjects();
-    void loadAuthStatus();
   }, []);
 
   useEffect(() => {
@@ -413,7 +294,6 @@ export default function App() {
       void loadWikiPageCount(selectedProject.id);
       void loadTabData(activeTab, selectedProject.id);
       void loadSettingsData(selectedProject.id);
-      setPrivacyMode(Boolean(selectedProject.privacy_mode ?? true));
     } else {
       styleProfileLoadSeq.current += 1;
       setStyleProfileRecords([]);
@@ -445,14 +325,6 @@ export default function App() {
       setSelectedProject((current) => current ?? result[0] ?? null);
     } catch {
       setLog('后端未启动时，界面会保持空状态。');
-    }
-  }
-
-  async function loadAuthStatus() {
-    try {
-      setAuthStatus(await api.authStatus());
-    } catch {
-      setAuthStatus(localAuthStatus);
     }
   }
 
@@ -1880,137 +1752,6 @@ export default function App() {
     return `${prefix}${result.text}`;
   }
 
-  function applyProviderPreset(provider: string) {
-    const preset = providerPresets[provider];
-    setModelForm((current) => ({
-      ...current,
-      provider,
-      ...(preset ?? {}),
-      title:
-        current.title ||
-        (provider === 'DeepSeek'
-          ? 'DeepSeek 写作模型'
-          : provider === 'Xiaomi MiMo'
-            ? 'Xiaomi MiMo 写作模型'
-            : provider === 'MiniMax'
-              ? 'MiniMax 写作模型'
-              : current.title),
-    }));
-  }
-
-  async function saveModelConfig() {
-    if (!selectedProject) {
-      setLog('请先选择项目，再保存模型配置。');
-      return;
-    }
-    if (!modelForm.api_key.trim() || !modelForm.model_name.trim() || !modelForm.base_url.trim()) {
-      setLog('模型配置未保存：真实测试必须填写 API Key、Base URL 和 Model Name。');
-      return;
-    }
-    const executionTitle = '保存模型配置';
-    startExecution(executionTitle, '正在写入当前项目的模型配置...');
-    const payload = {
-      title: modelForm.title || modelForm.model_name || '未命名模型',
-      category: modelForm.provider,
-      content: modelForm.model_name,
-      payload: {
-        provider: modelForm.provider,
-        api_key: modelForm.api_key,
-        base_url: modelForm.base_url,
-        model_name: modelForm.model_name,
-        temperature: modelForm.temperature,
-        max_tokens: modelForm.max_tokens,
-        is_default: modelForm.is_default,
-      },
-      status: 'active',
-    };
-    try {
-      if (modelForm.id) {
-        await api.updateRecord(selectedProject.id, 'model-configs', modelForm.id, payload);
-      } else {
-        await api.createRecord(selectedProject.id, 'model-configs', payload);
-      }
-      setModelForm(emptyModelForm);
-      await loadSettingsData(selectedProject.id);
-      finishExecution(executionTitle, modelForm.id ? '模型配置已更新。' : '模型配置已保存。');
-    } catch (error) {
-      failExecution(executionTitle, `模型配置保存失败：${error instanceof Error ? error.message : '未知错误'}`);
-    }
-  }
-
-  async function deleteModelConfig(recordId: string) {
-    if (!selectedProject) return;
-    await api.deleteRecord(selectedProject.id, 'model-configs', recordId);
-    await loadSettingsData(selectedProject.id);
-    setLog('模型配置已删除。');
-  }
-
-  function editModelConfig(record: GenericRecord) {
-    const payload = parseModelPayload(record);
-    setModelForm({ id: record.id, title: record.title, ...payload });
-  }
-
-  async function saveTaskRoute(workflow: string, modelId: string) {
-    if (!selectedProject) return;
-    const existing = taskRoutes.find((route) => route.category === workflow || route.title === workflow);
-    const payload = {
-      title: workflow,
-      category: workflow,
-      content: modelId,
-      payload: { workflow, model_config_id: modelId },
-      status: 'active',
-    };
-    if (existing) {
-      await api.updateRecord(selectedProject.id, 'model-task-routes', existing.id, payload);
-    } else {
-      await api.createRecord(selectedProject.id, 'model-task-routes', payload);
-    }
-    await loadSettingsData(selectedProject.id);
-    setLog('任务路由已保存。');
-  }
-
-  async function savePrivacyMode() {
-    if (!selectedProject) return;
-    const updated = await api.updateProject(selectedProject.id, { ...selectedProject, privacy_mode: privacyMode });
-    setSelectedProject(updated);
-    setProjects((items) => items.map((item) => (item.id === updated.id ? updated : item)));
-    setLog('隐私模式已保存。');
-  }
-
-  async function testConnection() {
-    if (!selectedProject) {
-      setLog('请先选择项目，再测试连接。');
-      return;
-    }
-    const hasFormInput = Boolean(modelForm.id || modelForm.api_key.trim() || modelForm.model_name.trim() || modelForm.title.trim());
-    const activeModel = modelForWorkflow('generate_chapter_draft');
-    const payload = hasFormInput ? modelForm : activeModel ? parseModelPayload(activeModel) : null;
-    if (!payload || !payload.api_key.trim() || !payload.model_name.trim()) {
-      setLog('连接测试失败：请先填写 API Key 与 Model Name，或保存一个可用模型并设为默认。');
-      return;
-    }
-    const executionTitle = '测试模型连接';
-    startExecution(executionTitle, '正在向远程模型发送最小连接测试请求...');
-    try {
-      const result = await api.testModelConnection(selectedProject.id, {
-        provider: payload.provider,
-        api_key: payload.api_key,
-        base_url: payload.base_url,
-        model_name: payload.model_name,
-        temperature: payload.temperature,
-        max_tokens: payload.max_tokens,
-      });
-      finishExecution(
-        executionTitle,
-        `连接测试成功：${result.message} 当前模型：${result.model}${
-          hasFormInput && !modelForm.id ? '。请保存配置并设为默认或配置任务路由，否则正文生成仍会使用本地占位。' : ''
-        }`,
-      );
-    } catch (error) {
-      failExecution(executionTitle, `连接测试失败：${error instanceof Error ? error.message : '未知错误'}`);
-    }
-  }
-
   async function analyzeStyleSample() {
     if (!selectedProject || !styleSampleText.trim()) return;
     const result = await executeTask(
@@ -2070,31 +1811,6 @@ export default function App() {
     await loadStyleProfileRecords(projectId);
   }
 
-  async function continueLocalMode() {
-    setAuthStatus(localAuthStatus);
-    setLog('已保持本地模式：小说正文、记忆和 API Key 不会因为 OAuth 自动上传。');
-  }
-
-  async function startOauthLogin() {
-    try {
-      const result = await api.startOauth('openai');
-      setLog(result.message);
-    } catch (error) {
-      setLog(`OAuth 登录入口暂不可用：${error instanceof Error ? error.message : '未知错误'}`);
-    }
-  }
-
-  async function logout() {
-    try {
-      setAuthStatus(await api.logout());
-      setLog('已退出登录，继续本地使用。');
-    } catch {
-      setAuthStatus(localAuthStatus);
-      setLog('已回到本地模式。');
-    }
-  }
-
-  const activeTabMeta = tabs.find((tab) => tab.key === activeTab);
   const isWritingTab = activeTab === 'chapters';
   const executionBusy = executionStatus.state === 'running';
   const executionLabel =
@@ -2108,7 +1824,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">
+        <button className="brand" onClick={() => setActiveTab('chapters')} title="回到主页">
           <div className="brand-mark">
             <Brain size={28} />
           </div>
@@ -2116,7 +1832,9 @@ export default function App() {
             <h1>AI 小说创作平台</h1>
             <p>本地优先 / 长篇记忆 / 项目隔离</p>
           </div>
-        </div>
+        </button>
+
+        <div className="header-actions" id="app-header-actions"></div>
 
         <div className="create-project">
           <div className="section-title">
@@ -2184,81 +1902,10 @@ export default function App() {
             </div>
           </div>
         )}
-
-        <div className="sidebar-tools">
-          <button className={activeTab === 'settings' ? 'selected' : ''} onClick={() => setActiveTab('settings')}>
-            <Settings size={16} />
-            设置
-          </button>
-        </div>
       </aside>
 
       <main className={isWritingTab ? 'workspace writing-workspace' : 'workspace'}>
-        {isWritingTab ? (
-          <header className="writing-dock">
-            <div>
-              <span className="eyebrow">写作工作台</span>
-              <strong>{selectedProject?.title ?? '还没有项目'}</strong>
-              <span>
-                {selectedChapter
-                  ? `第 ${selectedChapter.chapter_number} 章 · ${displayChapterTitle(selectedChapter)}`
-                  : '选择章节后开始写作'}
-              </span>
-            </div>
-            <div className="writing-dock-actions">
-              <span>
-                <CheckCircle2 size={15} />
-                遵循 CLAUDE.md
-              </span>
-              <span>{authStatus.authenticated ? '云端账户已登录' : '本地优先'}</span>
-              <span>{modelLabel(modelForWorkflow('generate_chapter_draft'))}</span>
-              <span className={`writing-execution ${executionStatus.state}`} role="status" aria-live="polite">
-                {executionStatus.state === 'running' && <LoaderCircle className="execution-spinner" size={15} />}
-                {executionLabel}
-              </span>
-            </div>
-          </header>
-        ) : (
-          <header className="topbar">
-            <div>
-              <span className="eyebrow">智能创作工作室</span>
-              <h2>{selectedProject?.title ?? '还没有项目'}</h2>
-              <p className="project-context">
-                {selectedProject
-                  ? `所有操作写入 ${selectedProject.title} 的项目目录`
-                  : '先从左侧项目库创建或选择小说项目'}
-              </p>
-            </div>
-            <div className="topbar-stack">
-              <div className="studio-command">
-                <Sparkles size={16} />
-                <span>/imagine 下一章的悬念、记忆线索与人物暗流</span>
-              </div>
-              <div className="claude-note">
-                <CheckCircle2 size={16} />
-                执行计划前读取并遵循 CLAUDE.md
-              </div>
-              <div className="status-pill">
-                <span>{log}</span>
-              </div>
-              <div className={`execution-status ${executionStatus.state}`} role="status" aria-live="polite">
-                {executionStatus.state === 'running' ? (
-                  <LoaderCircle className="execution-spinner" size={16} />
-                ) : executionStatus.state === 'error' ? (
-                  <ShieldAlert size={16} />
-                ) : (
-                  <CheckCircle2 size={16} />
-                )}
-                <div>
-                  <strong>{executionLabel}</strong>
-                  <span>{executionStatus.detail}</span>
-                </div>
-              </div>
-            </div>
-          </header>
-        )}
-
-        <nav className="tabs">
+        <nav className="tabs nav-tabs">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -2274,38 +1921,17 @@ export default function App() {
               </button>
             );
           })}
+          <div className={`nav-execution ${executionStatus.state}`} role="status" aria-live="polite">
+            {executionStatus.state === 'running' ? (
+              <LoaderCircle className="execution-spinner" size={15} />
+            ) : executionStatus.state === 'error' ? (
+              <ShieldAlert size={15} />
+            ) : (
+              <CheckCircle2 size={15} />
+            )}
+            <span>{executionLabel}</span>
+          </div>
         </nav>
-
-        {activeTabMeta && !isWritingTab && (
-          <section className="feature-explainer" aria-label="当前功能说明">
-            <div>
-              <span>当前入口说明</span>
-              <strong>{activeTabMeta.label}</strong>
-            </div>
-            <p>{activeTabMeta.description}</p>
-          </section>
-        )}
-
-        {!isWritingTab && (
-          <section className="context-strip" aria-label="工作台状态">
-            <div>
-              <span>运行模式</span>
-              <strong>{authStatus.authenticated ? '云端账户已登录' : '本地优先'}</strong>
-            </div>
-            <div>
-              <span>章节</span>
-              <strong>{chapters.length} 章</strong>
-            </div>
-            <div>
-              <span>记忆</span>
-              <strong>{wikiPageCount} 个 Wiki 页面</strong>
-            </div>
-            <div>
-              <span>AI 模型</span>
-              <strong>{modelLabel(modelForWorkflow('generate_chapter_draft'))}</strong>
-            </div>
-          </section>
-        )}
 
         {activeTab === 'chapters' && (
           <NovelEditorPage
@@ -2332,7 +1958,6 @@ export default function App() {
             onScoreChapter={() => void scoreChapter()}
             onFinalizeChapter={() => void finalizeChapter()}
             onSelectVersion={(versionId) => void selectVersion(versionId)}
-            onOpenSettings={() => setActiveTab('settings')}
             onOpenResource={(resource) => setActiveTab(resource)}
             onLog={setLog}
           />
@@ -2357,312 +1982,6 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'settings' && (
-          <section className="settings-page">
-            <aside className="settings-nav">
-              <div className="settings-nav-title">
-                <span>设置中心</span>
-                <small>本地优先配置</small>
-              </div>
-              {settingsSections.map((section) => (
-                <button
-                  className={settingsSection === section.key ? 'active' : ''}
-                  key={section.key}
-                  onClick={() => setSettingsSection(section.key)}
-                >
-                  <strong>{section.title}</strong>
-                  <span>{section.description}</span>
-                </button>
-              ))}
-            </aside>
-
-            <div className="settings-content">
-              <div className="settings-content-header">
-                <div>
-                  <span className="eyebrow">Settings</span>
-                  <h3>{settingsTitleMap[settingsSection]}</h3>
-                </div>
-                <div className="settings-badges">
-                  <span>{authStatus.authenticated ? '已登录' : '本地模式'}</span>
-                  <span>{modelConfigs.length ? `${modelConfigs.length} 个模型` : '未配置模型'}</span>
-                </div>
-              </div>
-
-              {settingsSection === 'account' && (
-                <div className="settings-card account-card">
-                  <div className="account-status">
-                    <div className={authStatus.authenticated ? 'account-avatar signed-in' : 'account-avatar'}>
-                      {authStatus.user?.avatar_url ? (
-                        <img src={authStatus.user.avatar_url} alt={authStatus.user.name} />
-                      ) : authStatus.authenticated ? (
-                        authStatus.user?.name.slice(0, 1) ?? <UserCircle size={22} />
-                      ) : (
-                        <CloudOff size={22} />
-                      )}
-                    </div>
-                    <div>
-                      <strong>{authStatus.authenticated ? '已登录' : '本地模式'}</strong>
-                      <p>{authStatus.message}</p>
-                    </div>
-                  </div>
-                  {authStatus.authenticated && authStatus.user ? (
-                    <div className="signed-in-profile">
-                      <div>
-                        <strong>{authStatus.user.name}</strong>
-                        <span>{authStatus.user.email}</span>
-                        <span>Provider：{authStatus.user.provider}</span>
-                      </div>
-                      <button onClick={() => void logout()}>
-                        <LogOut size={15} />
-                        退出登录
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="action-row account-actions">
-                        <button onClick={() => void continueLocalMode()}>
-                          <CloudOff size={15} />
-                          继续本地使用
-                        </button>
-                        <button className="primary-action" onClick={() => void startOauthLogin()}>
-                          <Cloud size={15} />
-                          OAuth 登录
-                        </button>
-                      </div>
-                      <div className="provider-row">
-                        <span>OpenAI</span>
-                        <span>GitHub</span>
-                        <span>Google</span>
-                        <span>自定义 Provider</span>
-                      </div>
-                    </>
-                  )}
-                  <div className="privacy-list">
-                    <p>本地项目默认保存在本机，OAuth 登录不会自动上传小说正文。</p>
-                    <p>只有你后续主动开启同步时，才会考虑云端同步。</p>
-                    <p>API Key 仍优先保存在当前项目的本地模型配置中，不和 OAuth 账号强绑定。</p>
-                  </div>
-                </div>
-              )}
-
-              {settingsSection === 'models' && (
-                <div className="settings-card model-config-card">
-                  <div className="section-toolbar">
-                    <div>
-                      <strong>模型配置</strong>
-                      <span>{modelConfigs.length ? `${modelConfigs.length} 个配置` : '还没有模型配置'}</span>
-                    </div>
-                    <button onClick={() => setModelForm(emptyModelForm)}>新建配置</button>
-                  </div>
-                  <div className="settings-grid">
-                    <label>
-                      配置名称
-                      <input
-                        aria-label="配置名称"
-                        value={modelForm.title}
-                        onChange={(event) => setModelForm({ ...modelForm, title: event.target.value })}
-                        placeholder="例如：DeepSeek 写作模型"
-                      />
-                    </label>
-                    <label>
-                      服务商类型
-                      <select
-                        value={modelForm.provider}
-                        onChange={(event) => applyProviderPreset(event.target.value)}
-                      >
-                        {providerOptions.map((provider) => (
-                          <option key={provider} value={provider}>
-                            {provider}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="api-key-field">
-                      API Key
-                      <span>
-                        <input
-                          aria-label="API Key"
-                          type={showApiKey ? 'text' : 'password'}
-                          value={modelForm.api_key}
-                          onChange={(event) => setModelForm({ ...modelForm, api_key: event.target.value })}
-                          placeholder="sk-..."
-                        />
-                        <button type="button" onClick={() => setShowApiKey(!showApiKey)}>
-                          {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                        </button>
-                      </span>
-                    </label>
-                    <label>
-                      Base URL
-                      <input
-                        value={modelForm.base_url}
-                        onChange={(event) => setModelForm({ ...modelForm, base_url: event.target.value })}
-                        placeholder="https://api.openai.com/v1"
-                      />
-                    </label>
-                    <label>
-                      Model Name
-                      <input
-                        value={modelForm.model_name}
-                        onChange={(event) => setModelForm({ ...modelForm, model_name: event.target.value })}
-                        placeholder="gpt-4o-mini"
-                      />
-                    </label>
-                    <label>
-                      Temperature
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="2"
-                        value={modelForm.temperature}
-                        onChange={(event) => setModelForm({ ...modelForm, temperature: Number(event.target.value) })}
-                      />
-                    </label>
-                    <label>
-                      Max Tokens
-                      <input
-                        type="number"
-                        min="1"
-                        value={modelForm.max_tokens}
-                        onChange={(event) => setModelForm({ ...modelForm, max_tokens: Number(event.target.value) })}
-                      />
-                    </label>
-                    <label className="check-row">
-                      <input
-                        type="checkbox"
-                        checked={modelForm.is_default}
-                        onChange={(event) => setModelForm({ ...modelForm, is_default: event.target.checked })}
-                      />
-                      是否默认模型
-                    </label>
-                  </div>
-                  <div className="action-row">
-                    <button className="primary-action" onClick={() => void saveModelConfig()} disabled={executionBusy}>
-                      {executionBusy && executionStatus.title === '保存模型配置' ? (
-                        <LoaderCircle className="execution-spinner" size={15} />
-                      ) : (
-                        <Save size={15} />
-                      )}
-                      {executionBusy && executionStatus.title === '保存模型配置' ? '保存中' : '保存配置'}
-                    </button>
-                    <button onClick={() => void testConnection()} disabled={executionBusy}>
-                      <Wifi size={15} />
-                      测试连接
-                    </button>
-                  </div>
-                  <div className="model-list">
-                    {modelConfigs.map((model) => {
-                      const payload = parseModelPayload(model);
-                      return (
-                        <article key={model.id}>
-                          <div>
-                            <strong>{model.title}</strong>
-                            <span>{payload.provider} / {payload.model_name || '未填写模型名'}</span>
-                          </div>
-                          <div className="compact-actions">
-                            <button onClick={() => editModelConfig(model)}>编辑</button>
-                            <button onClick={() => void deleteModelConfig(model.id)}>
-                              <Trash2 size={14} />
-                              删除
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
-                    {modelConfigs.length === 0 && <p className="empty-state">还没有模型配置，AI 操作会要求先接入真实远程模型。</p>}
-                  </div>
-                </div>
-              )}
-
-              {settingsSection === 'routes' && (
-                <div className="settings-card">
-                  <div className="section-toolbar">
-                    <div>
-                      <strong>任务路由</strong>
-                      <span>给生成、评分、摘要、记忆提取分配不同模型。</span>
-                    </div>
-                  </div>
-                  <div className="route-list structured">
-                    {workflowOptions.map((workflow) => {
-                      const selected = modelForWorkflow(workflow.key);
-                      return (
-                        <label key={workflow.key}>
-                          <span>{workflow.label}</span>
-                          <select
-                            value={selected?.id ?? ''}
-                            onChange={(event) => void saveTaskRoute(workflow.key, event.target.value)}
-                          >
-                            <option value="">未配置远程模型</option>
-                            {modelConfigs.map((model) => (
-                              <option key={model.id} value={model.id}>
-                                {modelLabel(model)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {settingsSection === 'privacy' && (
-                <div className="settings-card">
-                  <div className="section-toolbar">
-                    <div>
-                      <strong>隐私模式</strong>
-                      <span>确认哪些数据留在本机，哪些数据可能发给远程模型。</span>
-                    </div>
-                  </div>
-                  <label className="privacy-toggle">
-                    <input type="checkbox" checked={privacyMode} onChange={(event) => setPrivacyMode(event.target.checked)} />
-                    小说正文、设定、记忆默认保存在本机；调用远程模型时只发送必要上下文。
-                  </label>
-                  <button onClick={() => void savePrivacyMode()}>保存隐私设置</button>
-                  <div className="privacy-list">
-                    <p>OAuth 登录不等于云同步，不会自动上传项目。</p>
-                    <p>项目、章节、Wiki 和导出文件仍以 project_id 隔离保存在本地。</p>
-                    <p>API Key 仍保存在当前项目的模型配置中。</p>
-                  </div>
-                </div>
-              )}
-
-              {settingsSection === 'status' && (
-                <div className="settings-card">
-                  <div className="section-toolbar">
-                    <div>
-                      <strong>调用状态</strong>
-                      <span>快速判断当前 AI 能力来自远程模型还是本地占位。</span>
-                    </div>
-                    <button onClick={() => void testConnection()}>
-                      <Wifi size={15} />
-                      测试连接
-                    </button>
-                  </div>
-                  <div className="status-grid">
-                    <div>
-                      <span>账户</span>
-                      <strong>{authStatus.authenticated ? '已登录' : '本地模式'}</strong>
-                    </div>
-                    <div>
-                      <span>默认模型</span>
-                      <strong>{modelLabel(modelForWorkflow('generate_chapter_draft'))}</strong>
-                    </div>
-                    <div>
-                      <span>Fallback</span>
-                      <strong>失败时回退到本地占位结果</strong>
-                    </div>
-                  </div>
-                  <div className="api-status">
-                    <strong>最近状态</strong>
-                    <p>{log}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-        )}
 
         {activeTab === 'style' && (
           <StyleLearningPanel
@@ -2795,7 +2114,7 @@ export default function App() {
           />
         )}
 
-        {activeTab !== 'chapters' && activeTab !== 'characters' && activeTab !== 'outline' && activeTab !== 'graph' && activeTab !== 'timeline' && activeTab !== 'foreshadowing' && activeTab !== 'taboo' && activeTab !== 'knowledge' && activeTab !== 'export' && activeTab !== 'wiki' && activeTab !== 'settings' && activeTab !== 'style' && (
+        {activeTab !== 'chapters' && activeTab !== 'characters' && activeTab !== 'outline' && activeTab !== 'graph' && activeTab !== 'timeline' && activeTab !== 'foreshadowing' && activeTab !== 'taboo' && activeTab !== 'knowledge' && activeTab !== 'export' && activeTab !== 'wiki' && activeTab !== 'style' && (
           <section className="records-layout">
             <div className="record-form">
               <div className="panel-heading">
