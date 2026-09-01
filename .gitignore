@@ -13,3 +13,5 @@ frontend/.vite/
 *.key
 .ai-novel-master.key
 .runtime/
+
+backend/backups/
