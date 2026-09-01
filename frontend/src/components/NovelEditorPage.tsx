@@ -3,16 +3,19 @@ import {
   BookMarked,
   BookOpen,
   Brain,
+  Check,
   ChevronLeft,
   ChevronRight,
   Eye,
   Feather,
   FileDown,
   GitBranch,
+  History,
   Library,
   PenLine,
   Plus,
   RefreshCw,
+  Save,
   Search,
   Sparkles,
   Trash2,
@@ -333,14 +336,15 @@ export function NovelEditorPage({
       />
 
       <main className="novel-editor-main">
-        <EditorHeader
-          project={project}
-          selectedChapter={selectedChapter}
-          wordCount={wordCount}
-          onTitleChange={onChapterTitleChange}
-          onSave={onSaveChapter}
-          onExport={onFinalizeChapter}
-        />
+          <EditorHeader
+            project={project}
+            selectedChapter={selectedChapter}
+            wordCount={wordCount}
+            onTitleChange={onChapterTitleChange}
+            onSave={onSaveChapter}
+            onExport={onFinalizeChapter}
+            onScore={onScoreChapter}
+          />
         <WritingEditor
           selectedChapter={selectedChapter}
           draft={draft}
@@ -362,6 +366,9 @@ export function NovelEditorPage({
 
       <AIAssistantPanel
         collapsed={rightCollapsed}
+        project={project}
+        selectedChapter={selectedChapter}
+        wordCount={wordCount}
         prompt={prompt}
         tone={tone}
         style={style}
@@ -591,6 +598,7 @@ function EditorHeader({
   onTitleChange,
   onSave,
   onExport,
+  onScore,
 }: {
   project: Project | null;
   selectedChapter: Chapter | null;
@@ -598,6 +606,7 @@ function EditorHeader({
   onTitleChange: (title: string) => void;
   onSave: () => void;
   onExport: () => void;
+  onScore: () => void;
 }) {
   return (
     <header className="editor-header">
@@ -610,11 +619,21 @@ function EditorHeader({
           placeholder="请选择章节或输入章节标题"
           disabled={!selectedChapter}
         />
-        <p>{project?.title ?? '未选择作品'} · 已自动保存 · 最近编辑刚刚 · {wordCount} 字</p>
+        <p>{project?.title ?? '未选择作品'} · 已自动保存 · {wordCount} 字</p>
       </div>
       <div className="editor-header-actions">
-        <button onClick={onSave}><PenLine size={15} />保存</button>
-        <button onClick={onExport}><FileDown size={15} />发布 / 导出</button>
+        <button className="toolbar-button primary-toolbar" onClick={onSave} disabled={!selectedChapter} title="保存正文 (Cmd+S)">
+          <Save size={15} />
+          <span>保存</span>
+        </button>
+        <button className="toolbar-button" onClick={onExport} disabled={!selectedChapter} title="发布 / 导出">
+          <FileDown size={16} />
+          <span className="toolbar-tip">导出</span>
+        </button>
+        <button className="toolbar-button" onClick={onScore} disabled={!selectedChapter} title="检查逻辑与评分">
+          <Check size={16} />
+          <span className="toolbar-tip">评分</span>
+        </button>
       </div>
     </header>
   );
@@ -708,6 +727,9 @@ function WritingStatusBar({
 
 function AIAssistantPanel({
   collapsed,
+  project,
+  selectedChapter,
+  wordCount,
   prompt,
   tone,
   style,
@@ -740,6 +762,9 @@ function AIAssistantPanel({
   onSelectVersion,
 }: {
   collapsed: boolean;
+  project: Project | null;
+  selectedChapter: Chapter | null;
+  wordCount: number;
   prompt: string;
   tone: string;
   style: string;
@@ -783,6 +808,7 @@ function AIAssistantPanel({
             <h3>AI 创作副驾驶</h3>
             <small>{modelLabel}</small>
           </div>
+          <ContextPropertiesPanel project={project} selectedChapter={selectedChapter} wordCount={wordCount} versionCount={versions.length} />
           <div className="ai-action-groups">
             {assistantActionGroups.map((group) => (
               <section className="ai-action-group" key={group.label}>
@@ -963,6 +989,42 @@ function ContextReferencePanel({ wikiPageCount }: { wikiPageCount: number }) {
       {references.map((item) => (
         <span key={item}>{item}</span>
       ))}
+    </div>
+  );
+}
+
+function ContextPropertiesPanel({
+  project,
+  selectedChapter,
+  wordCount,
+  versionCount,
+}: {
+  project: Project | null;
+  selectedChapter: Chapter | null;
+  wordCount: number;
+  versionCount: number;
+}) {
+  const rows: Array<{ label: string; value: string }> = [
+    { label: '状态', value: selectedChapter?.status === 'final' ? '已完成' : selectedChapter ? '草稿' : '—' },
+    { label: '字数', value: `${wordCount}` },
+    { label: '章节', value: selectedChapter ? `第 ${selectedChapter.chapter_number} 章` : '—' },
+    { label: '版本', value: `${versionCount}` },
+    { label: '作品', value: project?.title ?? '—' },
+  ];
+  return (
+    <div className="context-properties">
+      <div className="context-properties-head">
+        <span>属性</span>
+        <small>{project ? '当前作品' : '未选择作品'}</small>
+      </div>
+      <dl>
+        {rows.map((row) => (
+          <div key={row.label}>
+            <dt>{row.label}</dt>
+            <dd>{row.value}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

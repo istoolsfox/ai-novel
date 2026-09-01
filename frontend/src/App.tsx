@@ -1895,27 +1895,33 @@ export default function App() {
         </div>
 
         <div className="project-list">
-          {projects.map((project) => (
-            <article className={project.id === selectedProject?.id ? 'project-card selected' : 'project-card'} key={project.id}>
-            <button
-              className={project.id === selectedProject?.id ? 'selected' : ''}
-              onClick={() => setSelectedProject(project)}
-            >
-              <strong>{project.title}</strong>
-              <span>{project.genre || '本地项目'} · {project.target_chapter_count || 0} 章计划</span>
-            </button>
-              <button
-                className="danger-link"
-                onClick={() => {
-                  setDeleteProjectTarget(project);
-                  setDeleteProjectPassword('');
-                }}
-              >
-                <Trash2 size={14} />
-                删除
-              </button>
-            </article>
-          ))}
+          {projects.map((project) => {
+            const projectChapters = project.id === selectedProject?.id ? chapters.length : 0;
+            return (
+              <article className={project.id === selectedProject?.id ? 'project-card selected' : 'project-card'} key={project.id}>
+                <button
+                  className={project.id === selectedProject?.id ? 'selected' : ''}
+                  onClick={() => setSelectedProject(project)}
+                >
+                  <span className="project-title-row">
+                    <strong>{project.title}</strong>
+                    {project.id === selectedProject?.id && <span className="project-dot" />}
+                  </span>
+                  <span className="project-meta">{project.genre || '本地项目'} · {projectChapters}/{project.target_chapter_count || 0} 章</span>
+                </button>
+                <button
+                  className="danger-link"
+                  onClick={() => {
+                    setDeleteProjectTarget(project);
+                    setDeleteProjectPassword('');
+                  }}
+                >
+                  <Trash2 size={14} />
+                  删除
+                </button>
+              </article>
+            );
+          })}
           {projects.length === 0 && (
             <div className="empty-project">
               <strong>创建第一本小说</strong>
@@ -1971,6 +1977,24 @@ export default function App() {
             <span className="workspace-status">{executionLabel}</span>
           </div>
         </header>
+
+        <div className="workspace-stats">
+          <div className="workspace-stat">
+            <span>章节</span>
+            <strong>{chapters.length}</strong>
+            <small>/{selectedProject?.target_chapter_count ?? '—'} 章计划</small>
+          </div>
+          <div className="workspace-stat">
+            <span>llmwiki 记忆</span>
+            <strong>{wikiPageCount}</strong>
+            <small>个页面</small>
+          </div>
+          <div className="workspace-stat">
+            <span>模型</span>
+            <strong className="stat-text">{modelLabel(modelForWorkflow('generate_chapter_draft'))}</strong>
+            <small>用于正文生成</small>
+          </div>
+        </div>
 
         {activeTab === 'chapters' && (
           <NovelEditorPage
