@@ -14,8 +14,8 @@
   background:
     radial-gradient(circle at 12% 8%, rgba(103, 166, 190, 0.18), transparent 24rem),
     radial-gradient(circle at 90% 12%, rgba(199, 150, 89, 0.14), transparent 22rem),
-    linear-gradient(145deg, rgba(13, 20, 36, 0.99), rgba(7, 12, 24, 0.99));
-  border: 1px solid rgba(211, 224, 255, 0.2);
+    linear-gradient(145deg, rgba(246, 247, 247, 0.99), rgba(246, 247, 247, 0.99));
+  border: 1px solid rgba(16, 18, 19, 0.2);
   border-radius: 28px;
   box-shadow: 0 30px 110px rgba(0, 0, 0, 0.58);
   color: #f6f7fb;
@@ -27,7 +27,7 @@
 
 .first-run-shell > header {
   align-items: flex-start;
-  border-bottom: 1px solid rgba(211, 224, 255, 0.12);
+  border-bottom: 1px solid rgba(16, 18, 19, 0.12);
   display: flex;
   justify-content: space-between;
   padding: 1.2rem 1.35rem 1rem;
@@ -68,7 +68,7 @@
 .first-run-status {
   align-items: center;
   background: rgba(72, 139, 121, 0.1);
-  border-bottom: 1px solid rgba(211, 224, 255, 0.1);
+  border-bottom: 1px solid rgba(16, 18, 19, 0.1);
   display: flex;
   gap: 0.55rem;
   padding: 0.75rem 1.35rem;
@@ -97,7 +97,7 @@
 .first-run-card,
 .first-run-checks {
   background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(211, 224, 255, 0.11);
+  border: 1px solid rgba(16, 18, 19, 0.11);
   border-radius: 18px;
   padding: 1rem;
 }
@@ -168,7 +168,7 @@
 .first-run-check-grid article {
   align-items: center;
   background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(211, 224, 255, 0.1);
+  border: 1px solid rgba(16, 18, 19, 0.1);
   border-radius: 14px;
   display: grid;
   gap: 0.65rem;
@@ -210,7 +210,7 @@
 
 .first-run-card input[type="password"] {
   background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(211, 224, 255, 0.14);
+  border: 1px solid rgba(16, 18, 19, 0.14);
   color: inherit;
   padding: 0.72rem;
 }

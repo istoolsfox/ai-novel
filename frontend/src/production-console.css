@@ -1,7 +1,7 @@
 .uc-console-loading {
   align-items: center;
-  background: rgba(8, 13, 25, 0.94);
-  border: 1px solid rgba(132, 199, 217, 0.28);
+  background: rgba(246, 247, 247, 0.94);
+  border: 1px solid rgba(32, 101, 209, 0.28);
   border-radius: 18px;
   color: #f4efe4;
   display: flex;
@@ -29,9 +29,9 @@
 
 .story-canvas {
   background:
-    radial-gradient(circle at 20% 15%, rgba(132, 199, 217, 0.1), transparent 22rem),
-    rgba(7, 12, 24, 0.72);
-  border: 1px solid rgba(211, 224, 255, 0.14);
+    radial-gradient(circle at 20% 15%, rgba(32, 101, 209, 0.1), transparent 22rem),
+    rgba(246, 247, 247, 0.72);
+  border: 1px solid rgba(16, 18, 19, 0.14);
   border-radius: 18px;
   height: min(62vh, 680px);
   min-height: 460px;
@@ -40,7 +40,7 @@
 
 .story-canvas-detail {
   background: rgba(14, 23, 42, 0.82);
-  border: 1px solid rgba(211, 224, 255, 0.13);
+  border: 1px solid rgba(16, 18, 19, 0.13);
   border-radius: 18px;
   display: flex;
   flex-direction: column;
@@ -66,7 +66,7 @@
 
 .story-canvas .react-flow__node {
   background: rgba(20, 31, 55, 0.96);
-  border: 1px solid rgba(132, 199, 217, 0.3);
+  border: 1px solid rgba(32, 101, 209, 0.3);
   border-radius: 14px;
   color: #f4efe4;
   font-size: 0.78rem;
@@ -76,24 +76,24 @@
 }
 
 .story-canvas .react-flow__node.story-flow-thread {
-  background: linear-gradient(135deg, rgba(213, 173, 104, 0.94), rgba(168, 155, 255, 0.9));
-  border-color: rgba(255, 248, 232, 0.36);
-  color: #0a1020;
+  background: linear-gradient(135deg, rgba(213, 173, 104, 0.94), rgba(122, 136, 255, 0.9));
+  border-color: rgba(255, 255, 255, 0.36);
+  color: #101213;
   font-size: 0.84rem;
   font-weight: 900;
 }
 
 .story-canvas .react-flow__node.story-flow-completed {
-  border-color: rgba(138, 166, 114, 0.72);
+  border-color: rgba(111, 157, 117, 0.72);
 }
 
 .story-canvas .react-flow__node.story-flow-active {
-  border-color: rgba(132, 199, 217, 0.82);
-  box-shadow: 0 0 24px rgba(132, 199, 217, 0.16);
+  border-color: rgba(32, 101, 209, 0.82);
+  box-shadow: 0 0 24px rgba(32, 101, 209, 0.16);
 }
 
 .story-canvas .react-flow__node.story-flow-blocked {
-  border-color: rgba(197, 108, 89, 0.82);
+  border-color: rgba(197, 86, 79, 0.82);
 }
 
 .story-canvas .react-flow__edge-text {
@@ -108,8 +108,8 @@
 
 .story-canvas .react-flow__controls,
 .story-canvas .react-flow__minimap {
-  background: rgba(10, 16, 32, 0.9);
-  border: 1px solid rgba(211, 224, 255, 0.12);
+  background: rgba(236, 237, 237, 0.9);
+  border: 1px solid rgba(16, 18, 19, 0.12);
 }
 
 .story-canvas-empty {
@@ -150,8 +150,8 @@
 }
 
 .worldline-compare-summary article {
-  background: rgba(8, 13, 25, 0.5);
-  border: 1px solid rgba(211, 224, 255, 0.12);
+  background: rgba(246, 247, 247, 0.5);
+  border: 1px solid rgba(16, 18, 19, 0.12);
   border-radius: 14px;
   display: flex;
   flex-direction: column;
@@ -172,8 +172,8 @@
 }
 
 .worldline-chapter-diffs article {
-  background: rgba(197, 108, 89, 0.08);
-  border: 1px solid rgba(197, 108, 89, 0.24);
+  background: rgba(197, 86, 79, 0.08);
+  border: 1px solid rgba(197, 86, 79, 0.24);
   border-radius: 14px;
   display: grid;
   gap: 0.4rem;
@@ -196,8 +196,8 @@
 }
 
 .worldline-diff-card {
-  background: rgba(8, 13, 25, 0.46);
-  border: 1px solid rgba(211, 224, 255, 0.12);
+  background: rgba(246, 247, 247, 0.46);
+  border: 1px solid rgba(16, 18, 19, 0.12);
   border-radius: 16px;
   padding: 0.85rem;
 }
@@ -221,7 +221,7 @@
 }
 
 .worldline-diff-columns > div {
-  background: rgba(255, 248, 232, 0.035);
+  background: rgba(255, 255, 255, 0.035);
   border-radius: 10px;
   display: flex;
   flex-direction: column;
