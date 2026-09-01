@@ -12,6 +12,7 @@ import {
   Network,
   PenLine,
   Plus,
+  Search,
   ShieldAlert,
   Sparkles,
   Star,
@@ -205,6 +206,8 @@ export default function App() {
     title: '准备就绪',
     detail: '等待下一步操作',
   });
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState('');
   const [projectTitle, setProjectTitle] = useState('前朝公主');
   const [recordTitle, setRecordTitle] = useState('');
   const [recordContent, setRecordContent] = useState('');
@@ -278,6 +281,20 @@ export default function App() {
 
   useEffect(() => {
     void loadProjects();
+  }, []);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCommandOpen((current) => !current);
+      }
+      if (event.key === 'Escape') {
+        setCommandOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, []);
 
   useEffect(() => {
@@ -1823,25 +1840,54 @@ export default function App() {
           : executionStatus.title;
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <button className="brand" onClick={() => setActiveTab('chapters')} title="回到主页">
-          <div className="brand-mark">
-            <Brain size={28} />
+      <aside className="app-rail">
+        <button className="brand-mark" onClick={() => setActiveTab('chapters')} title="回到主页">
+          <Brain size={22} />
+        </button>
+        <nav className="rail-nav">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                className={activeTab === tab.key ? 'active' : ''}
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                title={`${tab.label}：${tab.description}`}
+              >
+                <Icon size={18} />
+                <span>{tab.label}</span>
+                <small>{tab.description}</small>
+              </button>
+            );
+          })}
+        </nav>
+        <div className="rail-footer">
+          <div className={`nav-execution ${executionStatus.state}`} role="status" aria-live="polite">
+            {executionStatus.state === 'running' ? (
+              <LoaderCircle className="execution-spinner" size={15} />
+            ) : executionStatus.state === 'error' ? (
+              <ShieldAlert size={15} />
+            ) : (
+              <CheckCircle2 size={15} />
+            )}
           </div>
+        </div>
+      </aside>
+
+      <aside className="sidebar">
+        <div className="brand">
           <div>
             <h1>AI 小说创作平台</h1>
             <p>本地优先 / 长篇记忆 / 项目隔离</p>
           </div>
-        </button>
-
-        <div className="header-actions" id="app-header-actions"></div>
+        </div>
 
         <div className="create-project">
           <div className="section-title">
             <span>项目库</span>
             <small>{projects.length} 本小说</small>
           </div>
-          <input value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} aria-label="项目标题" />
+          <input value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} aria-label="项目标题" placeholder="新项目名称" />
           <button className="primary-action" onClick={() => void createProject()}>
             <Plus size={16} />
             新建项目
@@ -1872,7 +1918,7 @@ export default function App() {
           ))}
           {projects.length === 0 && (
             <div className="empty-project">
-              <strong>从侧栏创建第一本小说</strong>
+              <strong>创建第一本小说</strong>
               <span>后续章节、记忆、导出都会自动归属这里选中的项目。</span>
             </div>
           )}
@@ -1902,36 +1948,29 @@ export default function App() {
             </div>
           </div>
         )}
+
+        <div className="sidebar-tools">
+          <div className="header-actions" id="app-header-actions"></div>
+        </div>
       </aside>
 
       <main className={isWritingTab ? 'workspace writing-workspace' : 'workspace'}>
-        <nav className="tabs nav-tabs">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                className={activeTab === tab.key ? 'active' : ''}
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                title={`${tab.label}：${tab.description}`}
-              >
-                <Icon size={16} />
-                <span>{tab.label}</span>
-                <small>{tab.description}</small>
-              </button>
-            );
-          })}
-          <div className={`nav-execution ${executionStatus.state}`} role="status" aria-live="polite">
-            {executionStatus.state === 'running' ? (
-              <LoaderCircle className="execution-spinner" size={15} />
-            ) : executionStatus.state === 'error' ? (
-              <ShieldAlert size={15} />
-            ) : (
-              <CheckCircle2 size={15} />
+        <header className="workspace-topbar">
+          <div className="workspace-title">
+            <span className="eyebrow">写作工作台</span>
+            <strong>{selectedProject?.title ?? '还没有项目'}</strong>
+            {selectedChapter && (
+              <span className="workspace-context">第 {selectedChapter.chapter_number} 章 · {displayChapterTitle(selectedChapter)}</span>
             )}
-            <span>{executionLabel}</span>
           </div>
-        </nav>
+          <div className="workspace-actions">
+            <button className="command-k-hint" onClick={() => setCommandOpen(true)}>
+              <Search size={14} />
+              搜索或执行命令 <kbd>⌘K</kbd>
+            </button>
+            <span className="workspace-status">{executionLabel}</span>
+          </div>
+        </header>
 
         {activeTab === 'chapters' && (
           <NovelEditorPage
@@ -2174,6 +2213,100 @@ export default function App() {
           </section>
         )}
       </main>
+
+      {commandOpen && (
+        <CommandPalette
+          query={commandQuery}
+          onQueryChange={setCommandQuery}
+          onClose={() => setCommandOpen(false)}
+          onPick={(item) => {
+            setCommandOpen(false);
+            setCommandQuery('');
+            item.run();
+          }}
+          projects={projects}
+          tabs={tabs}
+          onSubmitProject={createProject}
+          onOpenProject={(project) => setSelectedProject(project)}
+          onOpenTab={(tab) => setActiveTab(tab)}
+        />
+      )}
+    </div>
+  );
+}
+
+function CommandPalette({
+  query,
+  onQueryChange,
+  onClose,
+  onPick,
+  projects,
+  tabs,
+  onSubmitProject,
+  onOpenProject,
+  onOpenTab,
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+  onClose: () => void;
+  onPick: (item: { label: string; hint?: string; run: () => void }) => void;
+  projects: Project[];
+  tabs: Array<{ key: TabKey; label: string; icon: typeof BookOpen; description: string }>;
+  onSubmitProject: () => void;
+  onOpenProject: (project: Project) => void;
+  onOpenTab: (tab: TabKey) => void;
+}) {
+  const q = query.trim().toLowerCase();
+  const filteredTabs = tabs.filter((tab) => !q || tab.label.toLowerCase().includes(q));
+  const filteredProjects = projects.filter((project) => !q || project.title.toLowerCase().includes(q));
+
+  return (
+    <div className="command-backdrop" onClick={onClose}>
+      <div className="command-panel" role="dialog" aria-label="命令面板" onClick={(event) => event.stopPropagation()}>
+        <div className="command-input">
+          <Search size={18} />
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="搜索项目、切换功能、新建项目…（Esc 关闭）"
+            aria-label="命令面板搜索"
+          />
+          <kbd>⌘K</kbd>
+        </div>
+        <div className="command-results">
+          <div className="command-group">
+            <span className="command-group-label">导航</span>
+            {filteredTabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => onPick({ label: tab.label, run: () => onOpenTab(tab.key) })}
+                >
+                  <Icon size={16} />
+                  <span>{tab.label}</span>
+                  <small>{tab.description}</small>
+                </button>
+              );
+            })}
+          </div>
+          <div className="command-group">
+            <span className="command-group-label">项目</span>
+            {filteredProjects.map((project) => (
+              <button key={project.id} onClick={() => onPick({ label: project.title, run: () => onOpenProject(project) })}>
+                <span>{project.title}</span>
+                <small>打开项目</small>
+              </button>
+            ))}
+            <button onClick={() => onPick({ label: '新建项目', run: () => onSubmitProject() })}>
+              <Plus size={16} />
+              <span>新建项目</span>
+              <small>在当前输入值创建</small>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
