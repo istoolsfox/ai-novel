@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { NovelEditorPage } from '../components/NovelEditorPage';
 import { api, Chapter, ChapterVersion } from '../api';
@@ -16,7 +16,7 @@ export function Writing() {
 
   const effectiveSelected = selectedChapter ?? chapters[0] ?? null;
 
-  const onSelectChapter = (chapter: Chapter) => {
+  const loadChapter = (chapter: Chapter) => {
     setSelectedChapter(chapter);
     setDraft(chapter.draft ?? '');
     setLog('');
@@ -25,6 +25,13 @@ export function Writing() {
       api.wikiCount(projectId).then((r) => setWikiPageCount(r.count)).catch(() => undefined);
     }
   };
+
+  useEffect(() => {
+    if (!selectedChapter && chapters.length > 0) {
+      loadChapter(chapters[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapters]);
 
   const onDraftChange = (value: string) => {
     setDraft(value);
@@ -96,7 +103,7 @@ export function Writing() {
       wikiPageCount={wikiPageCount}
       onCreateChapter={() => undefined}
       onDeleteChapter={() => undefined}
-      onSelectChapter={onSelectChapter}
+      onSelectChapter={loadChapter}
       onDraftChange={onDraftChange}
       onChapterTitleChange={(title) => {
         if (effectiveSelected && projectId) {
