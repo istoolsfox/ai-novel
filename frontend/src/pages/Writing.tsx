@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Minimize2 } from 'lucide-react';
 import { NovelEditorPage } from '../components/NovelEditorPage';
+import { ImportModal } from '../components/ImportModal';
 import { api, Chapter, ChapterVersion } from '../api';
 import { useChapters } from '../shell/useProject';
 import { useWorkspace } from '../shell/workspace';
@@ -17,6 +18,7 @@ export function Writing() {
   const [versions, setVersions] = useState<ChapterVersion[]>([]);
   const [log, setLog] = useState('');
   const [wikiPageCount, setWikiPageCount] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
 
   const effectiveSelected = useMemo(
     () =>
@@ -166,6 +168,7 @@ export function Writing() {
         immersive={immersive}
         onToggleImmersive={() => setImmersive(!immersive)}
         onCreateChapter={() => void createChapter()}
+        onImport={() => setImportOpen(true)}
         onDeleteChapter={(chapter) => void deleteChapter(chapter)}
         onSelectChapter={loadChapter}
         onDraftChange={onDraftChange}
@@ -203,6 +206,20 @@ export function Writing() {
         }}
         onLog={setLog}
       />
+      {importOpen && projectId && (
+        <ImportModal
+          projectId={projectId}
+          chapters={chapters}
+          onClose={() => setImportOpen(false)}
+          onImported={async (message, importedChapterId) => {
+            setImportOpen(false);
+            await reload();
+            const imported = importedChapterId ? (await api.listChapters(projectId)).find((chapter) => chapter.id === importedChapterId) : null;
+            if (imported) loadChapter(imported);
+            setLog(message);
+          }}
+        />
+      )}
     </>
   );
 }

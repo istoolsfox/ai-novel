@@ -32,6 +32,32 @@ export type ChapterVersion = {
   created_at: string;
 };
 
+export type ImportPreviewItem = { title: string; words: number; preview: string };
+
+export type ImportPreview = {
+  mode: 'novel' | 'fragment';
+  chapter_count?: number;
+  total_words?: number;
+  items?: ImportPreviewItem[];
+  layer?: string;
+  layer_label?: string;
+  words?: number;
+  preview?: string;
+  matched_chapter?: { id: string; chapter_number: number; title: string; score: number } | null;
+};
+
+export type ImportResult = {
+  mode: string;
+  layer?: string;
+  layer_label?: string;
+  imported_chapters?: number;
+  chapters?: Array<{ id: string; chapter_number: number; title: string }>;
+  appended_to?: { id: string; chapter_number: number; title: string };
+  created_chapter?: { id: string; chapter_number: number; title: string };
+  record_id?: string;
+  title?: string;
+};
+
 export type GenericRecord = {
   id: string;
   title: string;
@@ -280,8 +306,7 @@ export const api = {
   finalizeChapter: (projectId: string, chapterId: string) =>
     request<Chapter>(`/api/projects/${projectId}/chapters/${chapterId}/finalize`, { method: 'POST' }),
   listVersions: (projectId: string, chapterId: string) =>
-    request<ChapterVersion[]>(`/api/projects/${projectId}/chapters/${chapterId}/versions`),
-  createVersion: (projectId: string, chapterId: string, label: string, content: string) =>
+    request<ChapterVersion[]>(`/api/projects/${projectId}/chapters/${chapterId}/versions`),  createVersion: (projectId: string, chapterId: string, label: string, content: string) =>
     request<ChapterVersion>(`/api/projects/${projectId}/chapters/${chapterId}/versions`, {
       method: 'POST',
       body: JSON.stringify({ label, content }),
@@ -289,6 +314,16 @@ export const api = {
   selectVersion: (projectId: string, chapterId: string, versionId: string) =>
     request<Chapter>(`/api/projects/${projectId}/chapters/${chapterId}/versions/${versionId}/select`, {
       method: 'POST',
+    }),
+  importPreview: (projectId: string, content: string) =>
+    request<ImportPreview>(`/api/projects/${projectId}/import/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+  importContent: (projectId: string, payload: { content: string; filename?: string; layer?: string; target_chapter_id?: string }) =>
+    request<ImportResult>(`/api/projects/${projectId}/import`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
   listRecords: (projectId: string, resource: string) =>
     request<GenericRecord[]>(`/api/projects/${projectId}/${resource}`),

@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .database import GENERIC_TABLES, connect, init_db, new_id, row_to_dict, rows_to_dicts, utc_now
 from .storage import ensure_project_dirs, project_root, require_project, safe_wiki_path
+from .novel_import import LAYER_LABELS, classify_fragment, has_chapter_structure, match_chapter, split_segments
 
 
 @asynccontextmanager
@@ -509,6 +510,176 @@ def delete_chapter(project_id: str, chapter_id: str) -> dict[str, bool]:
     except (OSError, TypeError, ValueError):
         pass
     return {"ok": True}
+
+
+class ImportPreviewIn(BaseModel):
+    content: str
+
+
+class ImportIn(BaseModel):
+    content: str
+    filename: str = ""
+    layer: str = ""  # 片段模式下可覆盖自动识别: chapter / world / character / outline
+    target_chapter_id: str = ""  # 片段为正文时，指定要追加到的章节
+
+
+_IMPORT_RESOURCE_FOR_LAYER = {
+    "world": "world-settings",
+    "character": "character-profiles",
+    "outline": "outlines",
+}
+
+
+@app.post("/api/projects/{project_id}/import/preview")
+def import_preview(project_id: str, payload: ImportPreviewIn) -> dict[str, Any]:
+    require_project(project_id)
+    content = payload.content
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="导入内容为空")
+    if has_chapter_structure(content):
+        segments = [segment for segment in split_segments(content) if segment["title"] or segment["words"]]
+        items = [
+            {
+                "title": segment["title"] or f"未命名片段 {segment['index'] + 1}",
+                "words": segment["words"],
+                "preview": segment["content"][:80],
+            }
+            for segment in segments
+        ]
+        return {
+            "mode": "novel",
+            "chapter_count": len(items),
+            "total_words": sum(item["words"] for item in items),
+            "items": items,
+        }
+    layer = classify_fragment(content)
+    result: dict[str, Any] = {
+        "mode": "fragment",
+        "layer": layer,
+        "layer_label": LAYER_LABELS[layer],
+        "words": len(content.strip()),
+        "preview": content.strip()[:120],
+    }
+    if layer == "chapter":
+        with connect() as conn:
+            chapters = rows_to_dicts(
+                conn.execute(
+                    "SELECT * FROM chapters WHERE project_id = ? ORDER BY chapter_number",
+                    (project_id,),
+                ).fetchall()
+            )
+        matched, score = match_chapter(content, chapters)
+        result["matched_chapter"] = (
+            {"id": matched["id"], "chapter_number": matched["chapter_number"], "title": matched["title"], "score": score}
+            if matched
+            else None
+        )
+    return result
+
+
+@app.post("/api/projects/{project_id}/import")
+def import_content(project_id: str, payload: ImportIn) -> dict[str, Any]:
+    require_project(project_id)
+    content = payload.content
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="导入内容为空")
+
+    if has_chapter_structure(content):
+        segments = [segment for segment in split_segments(content) if segment["title"] or segment["words"]]
+        now = utc_now()
+        with connect() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(chapter_number), 0) FROM chapters WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            start_number = int(row[0]) + 1
+            created = []
+            for offset, segment in enumerate(segments):
+                chapter_id = new_id()
+                title = segment["title"] or f"第 {start_number + offset} 章"
+                conn.execute(
+                    """
+                    INSERT INTO chapters (
+                        id, project_id, outline_id, chapter_number, title, brief, draft,
+                        summary, word_count, status, created_at, updated_at
+                    )
+                    VALUES (?, ?, '', ?, ?, '', ?, '', ?, 'draft', ?, ?)
+                    """,
+                    (chapter_id, project_id, start_number + offset, title, segment["content"], segment["words"], now, now),
+                )
+                created.append(row_to_dict(conn.execute("SELECT * FROM chapters WHERE id = ?", (chapter_id,)).fetchone()))
+        for chapter in created:
+            write_chapter_snapshot(project_id, chapter)
+        return {
+            "mode": "novel",
+            "imported_chapters": len(created),
+            "chapters": [{"id": c["id"], "chapter_number": c["chapter_number"], "title": c["title"]} for c in created],
+        }
+
+    layer = payload.layer if payload.layer in _IMPORT_RESOURCE_FOR_LAYER or payload.layer == "chapter" else classify_fragment(content)
+    if layer in _IMPORT_RESOURCE_FOR_LAYER:
+        title = payload.filename.strip() or content.strip().split("\n", 1)[0][:30] or LAYER_LABELS[layer]
+        record = create_generic(project_id, _IMPORT_RESOURCE_FOR_LAYER[layer], GenericIn(title=title, content=content))
+        return {"mode": "fragment", "layer": layer, "layer_label": LAYER_LABELS[layer], "record_id": record["id"], "title": record["title"]}
+
+    # 正文片段：追加到指定/匹配章节，无匹配则新建章节
+    with connect() as conn:
+        chapters = rows_to_dicts(
+            conn.execute("SELECT * FROM chapters WHERE project_id = ? ORDER BY chapter_number", (project_id,)).fetchall()
+        )
+    target = None
+    if payload.target_chapter_id:
+        target = next((c for c in chapters if c["id"] == payload.target_chapter_id), None)
+    else:
+        target, _score = match_chapter(content, chapters)
+    if target is not None:
+        merged_draft = f"{target['draft'].rstrip()}\n\n{content.strip()}" if target["draft"] else content.strip()
+        updated = update_chapter(
+            project_id,
+            target["id"],
+            ChapterIn(
+                outline_id=target["outline_id"],
+                chapter_number=target["chapter_number"],
+                title=target["title"],
+                brief=target["brief"],
+                draft=merged_draft,
+                summary=target["summary"],
+                status=target["status"],
+            ),
+        )
+        return {
+            "mode": "fragment",
+            "layer": "chapter",
+            "layer_label": LAYER_LABELS["chapter"],
+            "appended_to": {"id": updated["id"], "chapter_number": updated["chapter_number"], "title": updated["title"]},
+        }
+    now = utc_now()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(chapter_number), 0) FROM chapters WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+        next_number = int(row[0]) + 1
+        chapter_id = new_id()
+        title = payload.filename.strip() or content.strip().split("\n", 1)[0][:30] or f"第 {next_number} 章"
+        conn.execute(
+            """
+            INSERT INTO chapters (
+                id, project_id, outline_id, chapter_number, title, brief, draft,
+                summary, word_count, status, created_at, updated_at
+            )
+            VALUES (?, ?, '', ?, ?, '', ?, '', ?, 'draft', ?, ?)
+            """,
+            (chapter_id, project_id, next_number, title, content.strip(), len(content.strip()), now, now),
+        )
+        created = row_to_dict(conn.execute("SELECT * FROM chapters WHERE id = ?", (chapter_id,)).fetchone())
+    write_chapter_snapshot(project_id, created)
+    return {
+        "mode": "fragment",
+        "layer": "chapter",
+        "layer_label": LAYER_LABELS["chapter"],
+        "created_chapter": {"id": created["id"], "chapter_number": created["chapter_number"], "title": created["title"]},
+    }
 
 
 @app.post("/api/projects/{project_id}/chapters/{chapter_id}/versions")

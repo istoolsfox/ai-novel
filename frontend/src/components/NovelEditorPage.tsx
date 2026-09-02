@@ -11,6 +11,7 @@ import {
   FileDown,
   GitBranch,
   History,
+  Import,
   Library,
   Maximize2,
   Minimize2,
@@ -134,6 +135,7 @@ type NovelEditorPageProps = {
   immersive?: boolean;
   onToggleImmersive?: () => void;
   onCreateChapter: () => void;
+  onImport?: () => void;
   onDeleteChapter: (chapter: Chapter) => void;
   onSelectChapter: (chapter: Chapter) => void;
   onDraftChange: (draft: string) => void;
@@ -164,6 +166,7 @@ export function NovelEditorPage({
   immersive = false,
   onToggleImmersive,
   onCreateChapter,
+  onImport,
   onDeleteChapter,
   onSelectChapter,
   onDraftChange,
@@ -344,6 +347,7 @@ export function NovelEditorPage({
         onOrderChange={setChapterOrder}
         onSelectChapter={onSelectChapter}
         onCreateChapter={onCreateChapter}
+        onImport={onImport}
         onDeleteChapter={onDeleteChapter}
         onOpenResource={onOpenResource}
       />
@@ -448,6 +452,7 @@ function NovelSidebar({
   onOrderChange,
   onSelectChapter,
   onCreateChapter,
+  onImport,
   onDeleteChapter,
   onOpenResource,
 }: {
@@ -462,6 +467,7 @@ function NovelSidebar({
   onOrderChange: (value: 'asc' | 'desc') => void;
   onSelectChapter: (chapter: Chapter) => void;
   onCreateChapter: () => void;
+  onImport?: () => void;
   onDeleteChapter: (chapter: Chapter) => void;
   onOpenResource: (resource: 'characters' | 'outline' | 'knowledge') => void;
 }) {
@@ -521,6 +527,7 @@ function NovelSidebar({
             selectedChapter={selectedChapter}
             onSelectChapter={onSelectChapter}
             onCreateChapter={onCreateChapter}
+            onImport={onImport}
             onDeleteChapter={onDeleteChapter}
           />
           <div className="novel-resource-links">
@@ -544,19 +551,26 @@ function ChapterTree({
   selectedChapter,
   onSelectChapter,
   onCreateChapter,
+  onImport,
   onDeleteChapter,
 }: {
   chapters: Chapter[];
   selectedChapter: Chapter | null;
   onSelectChapter: (chapter: Chapter) => void;
   onCreateChapter: () => void;
+  onImport?: () => void;
   onDeleteChapter: (chapter: Chapter) => void;
 }) {
   return (
     <div className="chapter-tree">
       <div className="volume-header">
         <span>第一卷 · 记忆古籍</span>
-        <button onClick={onCreateChapter}><Plus size={14} />新增章节</button>
+        <span style={{ display: 'flex', gap: 6 }}>
+          {onImport && (
+            <button onClick={onImport}><Import size={14} />导入</button>
+          )}
+          <button onClick={onCreateChapter}><Plus size={14} />新增章节</button>
+        </span>
       </div>
       <div className="chapter-tree-list">
         {chapters.map((chapter) => (
