@@ -2178,7 +2178,11 @@ def export_epub(project_id: str) -> Response:
 
 
 def mount_frontend_spa() -> None:
-    """AI_NOVEL_FRONTEND_DIR 指向前端构建产物时，由后端直接托管 SPA（部署免 nginx）。"""
+    """AI_NOVEL_FRONTEND_DIR 指向前端构建产物时，由后端直接托管 SPA（部署免 nginx）。
+
+    用 404 中间件而不是 catch-all 路由：启动期的路由重排（release_bootstrap）会把
+    通用资源路由移到路由表末尾，catch-all 路由会抢走它们的 GET 请求。
+    """
     dist_value = os.getenv("AI_NOVEL_FRONTEND_DIR", "").strip()
     if not dist_value:
         return
@@ -2193,10 +2197,16 @@ def mount_frontend_spa() -> None:
 
     dist_root = dist.resolve()
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    def spa_fallback(full_path: str) -> Response:
-        candidate = (dist_root / full_path).resolve()
-        if full_path and candidate.is_file() and str(candidate).startswith(str(dist_root)):
+    @app.middleware("http")
+    async def spa_fallback(request: Request, call_next):
+        response = await call_next(request)
+        if response.status_code != 404 or request.method != "GET":
+            return response
+        path = request.url.path
+        if path == "/api" or path.startswith("/api/") or path.startswith("/assets/"):
+            return response
+        candidate = (dist_root / path.lstrip("/")).resolve()
+        if path and candidate.is_file() and str(candidate).startswith(str(dist_root)):
             return FileResponse(candidate)
         return FileResponse(dist_root / "index.html")
 
