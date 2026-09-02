@@ -8,6 +8,7 @@ import {
   FileText,
   FolderOpen,
   Globe,
+  HeartPulse,
   Home,
   Library,
   Map,
@@ -29,6 +30,7 @@ const CURRENT_PROJECT_NAV = [
   { to: 'relations', label: 'Relations', icon: Network },
   { to: 'timeline', label: 'Timeline', icon: FileText },
   { to: 'writing', label: 'Writing', icon: FileText },
+  { to: 'consistency', label: 'Consistency', icon: HeartPulse },
 ];
 
 export function AppShell() {

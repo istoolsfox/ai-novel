@@ -6,6 +6,11 @@ import { ProjectOverview } from './pages/ProjectOverview';
 import { Characters } from './pages/Characters';
 import { Outline } from './pages/Outline';
 import { Writing } from './pages/Writing';
+import { World } from './pages/World';
+import { Relations } from './pages/Relations';
+import { Timeline } from './pages/Timeline';
+import { Story } from './pages/Story';
+import { Consistency } from './pages/Consistency';
 import { CommandPage } from './pages/Command';
 import { Placeholder } from './pages/Placeholder';
 
@@ -27,16 +32,16 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="overview" replace /> },
           { path: 'overview', element: <ProjectOverview /> },
-          { path: 'story', element: <Placeholder title="Story" desc="故事圣经与 Story State。" /> },
+          { path: 'story', element: <Story /> },
           { path: 'outline', element: <Outline /> },
           { path: 'characters', element: <Characters /> },
-          { path: 'world', element: <Placeholder title="World" desc="世界观实体管理。" /> },
-          { path: 'relations', element: <Placeholder title="Relations" desc="关系图。" /> },
-          { path: 'timeline', element: <Placeholder title="Timeline" desc="横向时间轴。" /> },
+          { path: 'world', element: <World /> },
+          { path: 'relations', element: <Relations /> },
+          { path: 'timeline', element: <Timeline /> },
           { path: 'writing', element: <Writing /> },
           { path: 'writing/:chapterId', element: <Writing /> },
           { path: 'ai', element: <Placeholder title="AI Studio" desc="AI 生成工作台。" /> },
-          { path: 'consistency', element: <Placeholder title="Consistency Center" desc="一致性中心。" /> },
+          { path: 'consistency', element: <Consistency /> },
           { path: 'assets', element: <Placeholder title="Assets" desc="素材库。" /> },
           { path: 'analytics', element: <Placeholder title="Analytics" desc="创作分析。" /> },
         ],
