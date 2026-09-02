@@ -138,8 +138,10 @@
 .os-sidebar-brand .os-logo {
   align-items: center;
   background: var(--ai-accent);
+  border: none;
   border-radius: 6px;
   color: #fff;
+  cursor: pointer;
   display: flex;
   flex-shrink: 0;
   height: 28px;
@@ -150,6 +152,37 @@
 .os-sidebar-brand strong {
   font-size: 0.95rem;
   font-weight: 700;
+}
+
+.os-collapse {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--n-radius-sm);
+  color: var(--n-text-2);
+  cursor: pointer;
+  display: flex;
+  gap: 0.55rem;
+  margin: 0.2rem 0.35rem 0.35rem;
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  width: calc(100% - 0.7rem);
+}
+
+.os-collapse:hover {
+  background: var(--n-bg);
+  color: var(--n-text);
+}
+
+.os-nav-divider {
+  border-top: 1px solid var(--n-border);
+  margin: 0.45rem 0.5rem;
+}
+
+.os-sidebar-footer {
+  border-top: 1px solid var(--n-border);
+  margin-top: auto;
+  padding-top: 0.4rem;
 }
 
 .os-sidebar-search {
@@ -225,12 +258,14 @@
 .os-sidebar-collapsed .os-nav-item span,
 .os-sidebar-collapsed .os-nav-group-label,
 .os-sidebar-collapsed .os-sidebar-brand strong,
-.os-sidebar-collapsed .os-sidebar-search span {
+.os-sidebar-collapsed .os-collapse span,
+.os-sidebar-search span {
   display: none;
 }
 
 .os-sidebar-collapsed .os-nav-item,
-.os-sidebar-collapsed .os-sidebar-brand {
+.os-sidebar-collapsed .os-sidebar-brand,
+.os-sidebar-collapsed .os-collapse {
   justify-content: center;
 }
 

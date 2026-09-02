@@ -4,6 +4,7 @@ import {
   Activity,
   Bell,
   Brain,
+  ChevronLeft,
   ChevronRight,
   FileText,
   FolderOpen,
@@ -75,10 +76,15 @@ export function AppShell() {
       </header>
       <div className={bodyClass}>
         <aside className={collapsed ? 'os-sidebar os-sidebar-collapsed' : 'os-sidebar'}>
-          <button className="os-nav-item" onClick={() => setCollapsed(!collapsed)} title="折叠侧栏 (⌘B)">
-            <ChevronRight size={16} />
+          <div className="os-sidebar-brand">
+            <button className="os-logo" onClick={() => navigate('/dashboard')} title="Novel OS"><Brain size={16} /></button>
+            <strong>Novel OS</strong>
+          </div>
+          <button className="os-collapse" onClick={() => setCollapsed(!collapsed)} title="折叠侧栏 (⌘B)">
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
             <span>折叠</span>
           </button>
+
           <nav className="os-nav-group">
             <div className="os-nav-group-label">Workspace</div>
             <NavLink className={({ isActive }) => `os-nav-item${isActive ? ' active' : ''}`} to="/dashboard">
@@ -90,20 +96,24 @@ export function AppShell() {
               <span>Projects</span>
             </NavLink>
           </nav>
-          {projectId && (
-            <nav className="os-nav-group">
-              <div className="os-nav-group-label">Current Project</div>
-              {CURRENT_PROJECT_NAV.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <NavLink key={item.to} className={({ isActive }) => `os-nav-item${isActive ? ' active' : ''}`} to={`/projects/${projectId}/${item.to}`}>
-                    <Icon size={16} />
-                    <span>{item.label}</span>
-                  </NavLink>
-                );
-              })}
-            </nav>
-          )}
+
+          <div className="os-nav-divider" />
+
+          <nav className="os-nav-group">
+            <div className="os-nav-group-label">Current Project</div>
+            {CURRENT_PROJECT_NAV.map((item) => {
+              const Icon = item.icon;
+              return (
+                <NavLink key={item.to} className={({ isActive }) => `os-nav-item${isActive ? ' active' : ''}`} to={projectId ? `/projects/${projectId}/${item.to}` : '/projects'}>
+                  <Icon size={16} />
+                  <span>{item.label}</span>
+                </NavLink>
+              );
+            })}
+          </nav>
+
+          <div className="os-nav-divider" />
+
           <nav className="os-nav-group">
             <div className="os-nav-group-label">AI</div>
             <button className="os-nav-item" onClick={() => { if (projectId) navigate(`/projects/${projectId}/ai`); }}>
@@ -111,6 +121,7 @@ export function AppShell() {
               <span>AI Studio</span>
             </button>
           </nav>
+
           <nav className="os-nav-group">
             <div className="os-nav-group-label">Data</div>
             <button className="os-nav-item" onClick={() => navigate(projectId ? `/projects/${projectId}/analytics` : '/dashboard')}>
@@ -118,11 +129,13 @@ export function AppShell() {
               <span>Analytics</span>
             </button>
           </nav>
-          <div style={{ flex: 1 }} />
-          <button className="os-nav-item" onClick={() => setAiOpen(!aiOpen)} title="AI 面板 (⌘J)">
-            <Sparkles size={16} className="os-ai-indicator" />
-            <span>{aiOpen ? '收起 AI 面板' : '展开 AI 面板'}</span>
-          </button>
+
+          <div className="os-sidebar-footer">
+            <button className="os-nav-item" onClick={() => setAiOpen(!aiOpen)} title="AI 面板 (⌘J)">
+              <Sparkles size={16} className="os-ai-indicator" />
+              <span>{aiOpen ? '收起 AI 面板' : '展开 AI 面板'}</span>
+            </button>
+          </div>
         </aside>
         <main className="os-page">
           <Outlet />
