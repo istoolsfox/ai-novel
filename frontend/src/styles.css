@@ -2620,6 +2620,19 @@ textarea {
   margin-top: 0.2rem;
 }
 
+.ai-generated-badge {
+  align-items: center;
+  background: rgba(109, 91, 208, 0.1);
+  border: 1px solid rgba(109, 91, 208, 0.3);
+  border-radius: 999px;
+  color: #6d5bd0;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.14rem 0.5rem;
+}
+
 .ai-result-scroll {
   background: rgba(246, 247, 247, 0.56);
   border: 1px solid var(--line);

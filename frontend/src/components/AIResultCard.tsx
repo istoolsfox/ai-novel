@@ -1,4 +1,4 @@
-import { Copy, RefreshCw, Save, Sparkles, Trash2 } from 'lucide-react';
+import { Copy, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { WorkbenchAIResult } from '../api';
 
 type AIResultCardProps = {
@@ -54,7 +54,7 @@ export function AIResultCard({
           <strong>{result.title}</strong>
           {result.sourceWorkflow && <span>{result.sourceWorkflow}</span>}
         </div>
-        <Sparkles size={16} />
+        <span className="ai-generated-badge">AI Generated</span>
       </header>
       {isError && errorText && <p className="ai-error-text">{errorText}</p>}
       <div className="ai-result-scroll" aria-label={`${result.title} 结果内容`}>
