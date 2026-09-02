@@ -11,6 +11,7 @@ import { Relations } from './pages/Relations';
 import { Timeline } from './pages/Timeline';
 import { Story } from './pages/Story';
 import { Consistency } from './pages/Consistency';
+import { AIStudio } from './pages/AIStudio';
 import { CommandPage } from './pages/Command';
 import { Placeholder } from './pages/Placeholder';
 
@@ -40,7 +41,7 @@ export const router = createBrowserRouter([
           { path: 'timeline', element: <Timeline /> },
           { path: 'writing', element: <Writing /> },
           { path: 'writing/:chapterId', element: <Writing /> },
-          { path: 'ai', element: <Placeholder title="AI Studio" desc="AI 生成工作台。" /> },
+          { path: 'ai', element: <AIStudio /> },
           { path: 'consistency', element: <Consistency /> },
           { path: 'assets', element: <Placeholder title="Assets" desc="素材库。" /> },
           { path: 'analytics', element: <Placeholder title="Analytics" desc="创作分析。" /> },
