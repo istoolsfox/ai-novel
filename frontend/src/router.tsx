@@ -14,8 +14,12 @@ import { Consistency } from './pages/Consistency';
 import { AIStudio } from './pages/AIStudio';
 import { CommandPage } from './pages/Command';
 import { Placeholder } from './pages/Placeholder';
+import { Login } from './pages/Login';
+
+const basename = (import.meta.env.VITE_BASE ?? '/').replace(/\/$/, '');
 
 export const router = createBrowserRouter([
+  { path: 'login', element: <Login /> },
   {
     path: '/',
     element: <AppShell />,
@@ -47,4 +51,4 @@ export const router = createBrowserRouter([
       { path: 'settings', element: <Placeholder title="设置" desc="模型配置、安全与备份管理可通过 API 访问，图形界面将在后续阶段上线。" /> },
     ],
   },
-]);
+], { basename });

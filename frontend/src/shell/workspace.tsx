@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api, Project } from '../api';
+import { useNavigate } from 'react-router-dom';
+import { api, Project, UNAUTHORIZED_EVENT } from '../api';
 
 type WorkspaceValue = {
   projects: Project[];
@@ -14,6 +15,7 @@ type WorkspaceValue = {
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
 
 export function WorkspaceProvider({ projectId, children }: { projectId?: string; children: ReactNode }) {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [immersive, setImmersive] = useState(false);
@@ -32,6 +34,23 @@ export function WorkspaceProvider({ projectId, children }: { projectId?: string;
   useEffect(() => {
     void reloadProjects();
   }, [reloadProjects]);
+
+  // 账号模式：启动时校验会话，收到 401 事件回到登录页
+  useEffect(() => {
+    let alive = true;
+    api
+      .authStatus()
+      .then((status) => {
+        if (alive && status.account_mode && !status.authenticated) navigate('/login', { replace: true });
+      })
+      .catch(() => undefined);
+    const onUnauthorized = () => navigate('/login', { replace: true });
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => {
+      alive = false;
+      window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    };
+  }, [navigate]);
 
   useEffect(() => {
     if (!immersive) return;

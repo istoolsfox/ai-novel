@@ -1018,6 +1018,23 @@ kbd {
 }
 .immersive-exit:hover { background: var(--surface); color: var(--ink); opacity: 1; }
 
+/* 登录页 */
+.login-page {
+  align-items: center;
+  background: var(--paper);
+  display: flex;
+  height: 100vh;
+  justify-content: center;
+}
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-pop);
+  padding: 36px 40px;
+  width: min(400px, 92vw);
+}
+
 /* ------------------------------------------------------------
    通用细节
    ------------------------------------------------------------ */

@@ -176,6 +176,8 @@ export type AuthStatus = {
   user: AuthUser | null;
   sync_enabled: boolean;
   message: string;
+  account_mode?: boolean;
+  username?: string | null;
 };
 
 export type OAuthStart = {
@@ -189,19 +191,69 @@ export type OAuthStart = {
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 
+const TOKEN_KEY = 'ai-novel-token';
+const USER_KEY = 'ai-novel-user';
+
+export function getToken(): string {
+  return localStorage.getItem(TOKEN_KEY) ?? '';
+}
+
+export function setToken(token: string, username?: string): void {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+    if (username) localStorage.setItem(USER_KEY, username);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+  }
+}
+
+export function getStoredUsername(): string {
+  return localStorage.getItem(USER_KEY) ?? '';
+}
+
+export const UNAUTHORIZED_EVENT = 'ai-novel-unauthorized';
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = getToken();
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options?.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options?.headers ?? {}),
+    },
     ...options,
   });
+  if (response.status === 401) {
+    setToken('');
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
   if (!response.ok) {
     const text = await response.text();
+    try {
+      const data = JSON.parse(text) as { detail?: string };
+      if (data.detail) throw new Error(data.detail);
+    } catch (exc) {
+      if (exc instanceof SyntaxError) {
+        // 非 JSON 响应体
+      } else {
+        throw exc;
+      }
+    }
     throw new Error(text || response.statusText);
   }
   return response.json() as Promise<T>;
 }
 
+export type AccountLoginResult = { token: string; username: string; expires_at: string };
+
 export const api = {
+  accountLogin: (username: string, password: string) =>
+    request<AccountLoginResult>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  accountLogout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
   authStatus: () => request<AuthStatus>('/api/auth/status'),
   startOauth: (provider: string) => request<OAuthStart>(`/api/auth/oauth/${provider}/start`),
   logout: () => request<AuthStatus>('/api/auth/logout', { method: 'POST' }),

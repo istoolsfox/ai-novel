@@ -1,18 +1,21 @@
+import hashlib
 import json
 import os
 import re
+import secrets
 import socket
 import urllib.error
 import urllib.parse
 import urllib.request
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .database import GENERIC_TABLES, connect, init_db, new_id, row_to_dict, rows_to_dicts, utc_now
@@ -103,12 +106,102 @@ class ModelConnectionTestIn(BaseModel):
     max_tokens: int = 16
 
 
+class AccountLoginIn(BaseModel):
+    username: str
+    password: str
+
+
 AUTH_SESSION: dict[str, Any] | None = None
 OAUTH_PROVIDERS = {"openai", "github", "google", "custom"}
+
+# 账号模式：库里有账号即要求登录；这些路径始终公开
+ACCOUNT_PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/auth/status"}
+ACCOUNT_SESSION_TTL = timedelta(days=30)
 
 
 def init_app() -> None:
     init_db()
+    ensure_account_from_env()
+
+
+def hash_account_password(password: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 200_000).hex()
+
+
+def ensure_account_from_env() -> None:
+    """AI_NOVEL_ADMIN_USER / AI_NOVEL_ADMIN_PASSWORD 存在时，创建或同步唯一管理员账号。"""
+    username = os.getenv("AI_NOVEL_ADMIN_USER", "").strip()
+    password = os.getenv("AI_NOVEL_ADMIN_PASSWORD", "")
+    if not username or not password:
+        return
+    now = utc_now()
+    with connect() as conn:
+        existing = conn.execute("SELECT * FROM user_accounts WHERE username = ?", (username,)).fetchone()
+        if existing:
+            account = row_to_dict(existing) or {}
+            if hash_account_password(password, account.get("salt", "")) != account.get("password_hash"):
+                conn.execute(
+                    "UPDATE user_accounts SET password_hash = ?, updated_at = ? WHERE username = ?",
+                    (hash_account_password(password, account["salt"]), now, username),
+                )
+            return
+        salt = secrets.token_hex(16)
+        conn.execute(
+            "INSERT INTO user_accounts (id, username, password_hash, salt, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (new_id(), username, hash_account_password(password, salt), salt, now, now),
+        )
+
+
+def accounts_exist() -> bool:
+    with connect() as conn:
+        return conn.execute("SELECT 1 FROM user_accounts LIMIT 1").fetchone() is not None
+
+
+def bearer_token(request: Request) -> str:
+    header = request.headers.get("authorization", "")
+    return header.removeprefix("Bearer ").strip() if header.lower().startswith("bearer ") else ""
+
+
+def valid_account_session(request: Request) -> dict[str, Any] | None:
+    token = bearer_token(request)
+    if not token:
+        return None
+    with connect() as conn:
+        session = row_to_dict(
+            conn.execute("SELECT * FROM auth_sessions WHERE token = ?", (token,)).fetchone()
+        )
+    if not session or session.get("expires_at", "") < utc_now():
+        return None
+    return session
+
+
+@app.middleware("http")
+async def account_auth_guard(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/") and path not in ACCOUNT_PUBLIC_PATHS and accounts_exist():
+        if not valid_account_session(request):
+            return JSONResponse(status_code=401, content={"detail": "未登录或会话已过期"})
+    return await call_next(request)
+
+
+@app.post("/api/auth/login")
+def account_login(payload: AccountLoginIn) -> dict[str, Any]:
+    with connect() as conn:
+        account = row_to_dict(
+            conn.execute("SELECT * FROM user_accounts WHERE username = ?", (payload.username.strip(),)).fetchone()
+        )
+    if not account or hash_account_password(payload.password, account["salt"]) != account["password_hash"]:
+        raise HTTPException(status_code=401, detail="用户名或密码不正确")
+    token = secrets.token_hex(32)
+    now = datetime.now(timezone.utc)
+    expires_at = (now + ACCOUNT_SESSION_TTL).isoformat()
+    with connect() as conn:
+        conn.execute("DELETE FROM auth_sessions WHERE expires_at < ?", (now.isoformat(),))
+        conn.execute(
+            "INSERT INTO auth_sessions (token, user_id, username, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+            (token, account["id"], account["username"], now.isoformat(), expires_at),
+        )
+    return {"token": token, "username": account["username"], "expires_at": expires_at}
 
 
 @app.get("/api/health")
@@ -142,7 +235,23 @@ def normalize_oauth_provider(provider: str) -> str:
 
 
 @app.get("/api/auth/status")
-def auth_status() -> dict[str, Any]:
+def auth_status(request: Request) -> dict[str, Any]:
+    payload = auth_status_payload()
+    payload["account_mode"] = accounts_exist()
+    session = valid_account_session(request)
+    payload["authenticated"] = session is not None
+    payload["username"] = session.get("username") if session else None
+    return payload
+
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request) -> dict[str, Any]:
+    global AUTH_SESSION
+    AUTH_SESSION = None
+    token = bearer_token(request)
+    if token:
+        with connect() as conn:
+            conn.execute("DELETE FROM auth_sessions WHERE token = ?", (token,))
     return auth_status_payload()
 
 
@@ -171,13 +280,6 @@ def oauth_callback(provider: str, code: str = "", state: str = "") -> dict[str, 
         "avatar_url": "",
     }
     return auth_status_payload() | {"oauth_code_received": bool(code), "state": state}
-
-
-@app.post("/api/auth/logout")
-def auth_logout() -> dict[str, Any]:
-    global AUTH_SESSION
-    AUTH_SESSION = None
-    return auth_status_payload()
 
 
 @app.post("/api/projects")
@@ -2073,3 +2175,30 @@ def export_epub(project_id: str) -> Response:
         data = content.encode("utf-8")
     (project_root(project_id) / "exports" / "novel.epub").write_bytes(data)
     return Response(data, media_type="application/epub+zip")
+
+
+def mount_frontend_spa() -> None:
+    """AI_NOVEL_FRONTEND_DIR 指向前端构建产物时，由后端直接托管 SPA（部署免 nginx）。"""
+    dist_value = os.getenv("AI_NOVEL_FRONTEND_DIR", "").strip()
+    if not dist_value:
+        return
+    dist = Path(dist_value).expanduser()
+    if not dist.is_dir():
+        return
+    from fastapi.staticfiles import StaticFiles
+
+    assets = dist / "assets"
+    if assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets), name="assets")
+
+    dist_root = dist.resolve()
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa_fallback(full_path: str) -> Response:
+        candidate = (dist_root / full_path).resolve()
+        if full_path and candidate.is_file() and str(candidate).startswith(str(dist_root)):
+            return FileResponse(candidate)
+        return FileResponse(dist_root / "index.html")
+
+
+mount_frontend_spa()

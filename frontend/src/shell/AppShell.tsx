@@ -6,6 +6,7 @@ import {
   Globe,
   HeartPulse,
   Library,
+  LogOut,
   Map,
   Network,
   Search,
@@ -13,6 +14,8 @@ import {
   Sparkles,
   Users,
 } from 'lucide-react';
+import { useState } from 'react';
+import { api, setToken } from '../api';
 import { WorkspaceProvider, useWorkspace } from './workspace';
 import { ProjectSwitcher } from '../components/ProjectSwitcher';
 
@@ -51,6 +54,7 @@ function ShellFrame() {
   const params = useParams();
   const { project, immersive } = useWorkspace();
   const projectId = params.projectId;
+  const [username, setUsername] = useState(() => localStorage.getItem('ai-novel-user') ?? '');
 
   const segments = location.pathname.split('/').filter(Boolean);
   const pageTitle = PAGE_TITLES[segments[segments.length - 1] ?? ''] ?? '';
@@ -146,6 +150,22 @@ function ShellFrame() {
               <Settings size={15} />
               <span>设置</span>
             </button>
+            {username && (
+              <button
+                className="nav-item"
+                title="退出登录"
+                onClick={() => {
+                  void api.accountLogout().catch(() => undefined);
+                  setToken('');
+                  setUsername('');
+                  navigate('/login');
+                }}
+              >
+                <span className="avatar" style={{ width: 20, height: 20, fontSize: 10.5 }}>{username.slice(0, 1).toUpperCase()}</span>
+                <span className="grow ellip">{username}</span>
+                <LogOut size={14} />
+              </button>
+            )}
           </nav>
         </aside>
         <main className="page">
