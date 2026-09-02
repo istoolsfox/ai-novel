@@ -211,83 +211,102 @@ textarea {
   margin: 0;
 }
 
-.project-create-row {
+.project-create-action {
   align-items: center;
+  background: transparent;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  color: var(--muted);
   display: flex;
   gap: 0.4rem;
-}
-
-.project-create-row input {
-  background: #f6f7f7;
-  flex: 1;
-  min-width: 0;
-  font-size: 0.8rem;
-  padding: 0.42rem 0.55rem;
-}
-
-.icon-action {
-  align-items: center;
-  background: var(--blue);
-  border: none;
-  border-radius: 8px;
-  color: #ffffff;
-  display: flex;
-  flex-shrink: 0;
-  height: 32px;
   justify-content: center;
-  width: 32px;
+  padding: 0.42rem 0.6rem;
 }
 
-.icon-action:hover {
-  background: #1a55b5;
+.project-create-action:hover {
+  background: rgba(32, 101, 209, 0.06);
+  border-color: rgba(32, 101, 209, 0.5);
+  color: var(--blue);
 }
 
 .project-list {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.25rem;
   overflow-y: auto;
-  max-height: 200px;
+  max-height: 240px;
 }
 
-.project-card {
+.project-row {
+  align-items: center;
   background: #fafafa;
   border: 1px solid var(--line);
   border-radius: 8px;
   display: flex;
-  gap: 0.3rem;
-  padding: 0.3rem 0.35rem;
-  align-items: center;
+  gap: 0.1rem;
+  padding: 0.2rem 0.2rem;
 }
 
-.project-card.selected {
+.project-row.selected {
   background: rgba(32, 101, 209, 0.07);
   border-color: rgba(32, 101, 209, 0.35);
 }
 
-.project-card > button:first-child {
-  align-items: flex-start;
+.project-select {
+  align-items: center;
   background: transparent;
   border: none;
-  color: var(--ink);
+  cursor: pointer;
   display: flex;
   flex: 1;
-  flex-direction: column;
-  gap: 0.12rem;
+  gap: 0.5rem;
   min-width: 0;
-  padding: 0.1rem 0.15rem;
+  padding: 0.25rem 0.35rem;
   text-align: left;
 }
 
-.project-title-row {
-  align-items: center;
-  display: flex;
-  gap: 0.4rem;
-  width: 100%;
+.project-select:hover {
+  background: #f1f2f2;
+  border-radius: 6px;
 }
 
-.project-title-row strong {
+.project-select.selected {
+  background: transparent;
+}
+
+.project-radio {
+  align-items: center;
+  border: 1.5px solid #c6c8ca;
+  border-radius: 50%;
+  display: flex;
+  flex-shrink: 0;
+  height: 15px;
+  justify-content: center;
+  width: 15px;
+}
+
+.project-select.selected .project-radio {
+  border-color: var(--blue);
+}
+
+.project-select.selected .project-radio::after {
+  background: var(--blue);
+  border-radius: 50%;
+  content: "";
+  height: 7px;
+  width: 7px;
+}
+
+.project-row-body {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.project-row-body strong {
+  color: var(--ink);
   font-size: 0.85rem;
   font-weight: 700;
   overflow: hidden;
@@ -295,21 +314,15 @@ textarea {
   white-space: nowrap;
 }
 
-.project-dot {
-  background: var(--blue);
-  border-radius: 50%;
-  height: 6px;
-  flex-shrink: 0;
-  width: 6px;
-}
-
 .project-meta {
   color: var(--muted);
   font-size: 0.72rem;
-  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.project-delete {
+.project-edit {
   align-items: center;
   background: transparent;
   border: none;
@@ -323,9 +336,9 @@ textarea {
   width: 28px;
 }
 
-.project-delete:hover {
-  background: rgba(197, 86, 79, 0.1);
-  color: var(--red);
+.project-edit:hover {
+  background: #ececec;
+  color: var(--blue);
 }
 
 .empty-project {
@@ -342,16 +355,15 @@ textarea {
 .tab-context {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.3rem;
   padding: 0.15rem 0.1rem;
 }
 
 .tab-context-title {
-  color: var(--muted);
+  color: var(--blue);
   font-size: 0.72rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
 }
 
 .tab-context strong {
@@ -359,9 +371,127 @@ textarea {
   font-weight: 700;
 }
 
-.tab-context-metric {
+.tab-context-desc {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.tab-context-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+.tab-context-stats div {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.42rem 0.5rem;
+}
+
+.tab-context-stats span {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.tab-context-stats strong {
+  font-size: 0.95rem;
+}
+
+.project-modal-backdrop {
+  align-items: center;
+  background: rgba(22, 24, 26, 0.34);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1rem;
+  position: fixed;
+  z-index: 300;
+}
+
+.project-modal {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(16, 18, 19, 0.16), 0 1px 3px rgba(16, 18, 19, 0.06);
+  max-width: 420px;
+  width: 100%;
+}
+
+.project-modal-head {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.75rem 0.9rem;
+}
+
+.project-modal-head strong {
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.project-modal-close {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  height: 28px;
+  padding: 0;
+  width: 28px;
+}
+
+.project-modal-close:hover {
+  background: #f1f2f2;
+  color: var(--ink);
+}
+
+.project-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem;
+}
+
+.project-modal-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.project-modal-body label span {
   color: var(--muted);
   font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.project-modal-actions {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.7rem 0.9rem;
+}
+
+.project-modal-action-right {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.project-modal-delete {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.4rem;
 }
 
 .brand {
@@ -507,22 +637,6 @@ textarea {
   flex-direction: column;
   text-align: left;
   padding: 0.3rem 0.4rem;
-  box-shadow: none;
-}
-
-.project-card .danger-link {
-  align-self: center;
-  background: rgba(197, 86, 79, 0.12);
-  border-color: rgba(197, 86, 79, 0.24);
-  color: #e08a7e;
-  font-size: 0.76rem;
-  justify-self: end;
-  padding: 0.36rem 0.52rem;
-}
-
-.project-card .danger-link:hover {
-  background: rgba(197, 86, 79, 0.22);
-  border-color: rgba(197, 86, 79, 0.42);
   box-shadow: none;
 }
 

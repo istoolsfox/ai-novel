@@ -10,6 +10,7 @@ import {
   Library,
   LoaderCircle,
   Network,
+  Pencil,
   PenLine,
   Plus,
   Search,
@@ -213,6 +214,7 @@ export default function App() {
   const [recordContent, setRecordContent] = useState('');
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null);
   const [deleteProjectPassword, setDeleteProjectPassword] = useState('');
+  const [projectModal, setProjectModal] = useState<'closed' | 'new' | Project>('closed');
   const [styleSampleTitle, setStyleSampleTitle] = useState('未命名风格样本');
   const [styleSampleText, setStyleSampleText] = useState('');
   const [styleWritingGoal, setStyleWritingGoal] = useState('');
@@ -437,25 +439,41 @@ export default function App() {
     setTaskRoutes(routes);
   }
 
-  async function createProject() {
+  async function createProject(override?: Partial<Project>) {
+    const payload = override ?? {
+      title: projectTitle,
+      topic: '一个被流放的前朝公主发现能改写记忆的古籍',
+      genre: '奇幻',
+      audience: '网文读者',
+      tone: '克制、悬疑',
+      target_chapter_count: 5,
+      target_words_per_chapter: 3000,
+    };
+    const title = payload.title || '未命名项目';
     const project = await executeTask(
       '新建项目',
       '正在创建本地小说项目目录与数据库记录...',
-      () =>
-        api.createProject({
-          title: projectTitle,
-          topic: '一个被流放的前朝公主发现能改写记忆的古籍',
-          genre: '奇幻',
-          audience: '网文读者',
-          tone: '克制、悬疑',
-          target_chapter_count: 5,
-          target_words_per_chapter: 3000,
-        }),
-      `已创建项目：${projectTitle}`,
+      () => api.createProject(payload),
+      `已创建项目：${title}`,
     );
     if (!project) return;
     setProjects([project, ...projects]);
     setSelectedProject(project);
+  }
+
+  async function editProject(projectId: string, payload: Partial<Project>) {
+    const updated = await executeTask(
+      '编辑项目',
+      '正在更新项目信息...',
+      async () => {
+        const result = await api.updateProject(projectId, payload);
+        setProjects((items) => items.map((item) => (item.id === projectId ? { ...item, ...result } : item)));
+        setSelectedProject((current) => (current?.id === projectId ? { ...current, ...result } : current));
+        return result;
+      },
+      '项目信息已更新。',
+    );
+    return updated;
   }
 
   async function deleteProject() {
@@ -1878,45 +1896,65 @@ export default function App() {
             <span>项目库</span>
             <small>{projects.length} 本小说</small>
           </div>
-          <div className="project-create-row">
-            <input value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} aria-label="项目标题" placeholder="新项目名称" />
-            <button className="icon-action" onClick={() => void createProject()} title="新建项目" aria-label="新建项目">
-              <Plus size={16} />
-            </button>
-          </div>
+          <button className="project-create-action" onClick={() => setProjectModal('new')}>
+            <Plus size={15} />
+            新建项目
+          </button>
           <div className="project-list">
             {projects.map((project) => {
               const selected = project.id === selectedProject?.id;
               return (
-                <article className={selected ? 'project-card selected' : 'project-card'} key={project.id}>
-                  <button className={selected ? 'selected' : ''} onClick={() => setSelectedProject(project)}>
-                    <span className="project-title-row">
+                <div className={selected ? 'project-row selected' : 'project-row'} key={project.id}>
+                  <button
+                    className={selected ? 'project-select selected' : 'project-select'}
+                    onClick={() => setSelectedProject(project)}
+                    aria-label={`选择项目 ${project.title}`}
+                  >
+                    <span className="project-radio" aria-hidden="true" />
+                    <span className="project-row-body">
                       <strong>{project.title}</strong>
-                      {selected && <span className="project-dot" />}
+                      <span className="project-meta">{project.genre || '本地项目'} · {selected ? `${chapters.length}/${project.target_chapter_count || 0}` : `${project.target_chapter_count || 0} 章`}</span>
                     </span>
-                    <span className="project-meta">{project.genre || '本地项目'} · {selected ? `${chapters.length}/${project.target_chapter_count || 0}` : `${project.target_chapter_count || 0} 章`}</span>
                   </button>
                   <button
-                    className="project-delete"
-                    onClick={() => {
-                      setDeleteProjectTarget(project);
-                      setDeleteProjectPassword('');
-                    }}
-                     title="删除项目"
-                     aria-label="删除项目"
-                   >
-                     <Trash2 size={14} />
-                   </button>
-                </article>
+                    className="project-edit"
+                    onClick={() => setProjectModal(project)}
+                    title="编辑项目"
+                    aria-label="编辑项目"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                </div>
               );
             })}
             {projects.length === 0 && (
               <div className="empty-project">
-                <strong>创建第一本小说</strong>
+                <strong>还没有小说</strong>
               </div>
             )}
           </div>
         </div>
+
+        {projectModal !== 'closed' && (
+          <ProjectEditModal
+            mode={projectModal === 'new' ? 'new' : 'edit'}
+            project={projectModal === 'new' ? null : projectModal}
+            onClose={() => setProjectModal('closed')}
+            onSave={async (payload, project) => {
+              if (project) {
+                await editProject(project.id, payload);
+              } else {
+                await createProject(payload);
+              }
+              setProjectModal('closed');
+            }}
+            onDelete={async (project) => {
+              setDeleteProjectTarget(project);
+              setDeleteProjectPassword('');
+              setProjectModal('closed');
+            }}
+          />
+        )}
 
         {deleteProjectTarget && (
           <div className="delete-project-panel">
@@ -2230,7 +2268,7 @@ export default function App() {
           }}
           projects={projects}
           tabs={tabs}
-          onSubmitProject={createProject}
+          onSubmitProject={() => setProjectModal('new')}
           onOpenProject={(project) => setSelectedProject(project)}
           onOpenTab={(tab) => setActiveTab(tab)}
         />
@@ -2328,32 +2366,118 @@ function TabContextPanel({
   recordsCount: number;
   wikiPageCount: number;
 }) {
-  const titleMap: Record<string, string> = {
-    chapters: '本章',
-    outline: '大纲',
-    characters: '角色',
-    graph: '关系',
-    timeline: '时间线',
-    foreshadowing: '伏笔',
-    style: '风格',
-    taboo: '雷点',
-    knowledge: '资料',
-    wiki: '记忆',
-    export: '导出',
+  const workbenches: Record<string, { title: string; desc: string }> = {
+    chapters: { title: '小说编辑', desc: '分卷章节树、正文与 AI 续写' },
+    outline: { title: '大纲', desc: '分卷章节树、剧情板与 AI 多章大纲' },
+    characters: { title: '角色', desc: '深入角色卡、世界观与核心规则' },
+    graph: { title: '关系', desc: '人物关系、同盟、冲突与变化' },
+    timeline: { title: '时间线', desc: '事件顺序、因果与剧情节奏' },
+    foreshadowing: { title: '伏笔', desc: '埋线、回收节点与悬念提醒' },
+    style: { title: '风格', desc: '保存样本文风，让 AI 模仿' },
+    taboo: { title: '雷点', desc: '禁写内容、读者雷点与避坑' },
+    knowledge: { title: '资料', desc: '素材、资料与灵感来源' },
+    wiki: { title: '记忆', desc: '长篇记忆、章节摘要与语义页面' },
+    export: { title: '导出', desc: '导出 Markdown、TXT、DOCX 等' },
   };
-  const metric =
+  const wb = workbenches[activeTab];
+  const stats =
     activeTab === 'chapters'
-      ? `章节：${chaptersCount}`
+      ? [
+          { label: '章节', value: `${chaptersCount}` },
+          { label: '记忆', value: `${wikiPageCount}` },
+        ]
       : ['outline', 'characters', 'graph', 'timeline', 'foreshadowing', 'taboo', 'knowledge'].includes(activeTab)
-        ? `条数：${recordsCount}`
+        ? [{ label: '记录', value: `${recordsCount}` }]
         : activeTab === 'wiki'
-          ? `页面：${wikiPageCount}`
+          ? [{ label: '页面', value: `${wikiPageCount}` }]
           : null;
   return (
     <div className="tab-context">
-      <span className="tab-context-title">{titleMap[activeTab] ?? ''}</span>
+      <span className="tab-context-title">{wb?.title ?? ''}</span>
       <strong>{project?.title ?? '未选择作品'}</strong>
-      {metric && <span className="tab-context-metric">{metric}</span>}
+      {wb && <p className="tab-context-desc">{wb.desc}</p>}
+      {stats && (
+        <div className="tab-context-stats">
+          {stats.map((stat) => (
+            <div key={stat.label}>
+              <span>{stat.label}</span>
+              <strong>{stat.value}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectEditModal({
+  mode,
+  project,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  mode: 'new' | 'edit';
+  project: Project | null;
+  onClose: () => void;
+  onSave: (payload: Partial<Project>, project: Project | null) => Promise<void>;
+  onDelete: (project: Project) => void;
+}) {
+  const [title, setTitle] = useState(project?.title ?? '');
+  const [genre, setGenre] = useState(project?.genre ?? '');
+  const [target, setTarget] = useState(project?.target_chapter_count?.toString() ?? '');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!title.trim()) return;
+    setSaving(true);
+    await onSave(
+      {
+        title: title.trim(),
+        genre: genre.trim(),
+        target_chapter_count: Number(target) > 0 ? Number(target) : undefined,
+      },
+      project,
+    );
+    setSaving(false);
+  };
+
+  return (
+    <div className="project-modal-backdrop" onClick={onClose}>
+      <div className="project-modal" role="dialog" aria-label={mode === 'new' ? '新建项目' : '编辑项目'} onClick={(event) => event.stopPropagation()}>
+        <div className="project-modal-head">
+          <strong>{mode === 'new' ? '新建项目' : '编辑项目'}</strong>
+          <button className="project-modal-close" onClick={onClose} aria-label="关闭">✕</button>
+        </div>
+        <div className="project-modal-body">
+          <label>
+            <span>名称</span>
+            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="项目名称" autoFocus aria-label="项目名称" />
+          </label>
+          <label>
+            <span>类型</span>
+            <input value={genre} onChange={(event) => setGenre(event.target.value)} placeholder="例如：仙侠 / 奇幻" aria-label="项目类型" />
+          </label>
+          <label>
+            <span>章节计划</span>
+            <input value={target} onChange={(event) => setTarget(event.target.value)} placeholder="例如：5" type="number" min="0" aria-label="章节计划" />
+          </label>
+        </div>
+        <div className="project-modal-actions">
+          {mode === 'edit' && project && (
+            <button className="danger-action project-modal-delete" onClick={() => onDelete(project)} disabled={saving}>
+              <Trash2 size={14} />
+              删除
+            </button>
+          )}
+          <div className="project-modal-action-right">
+            <button onClick={onClose}>取消</button>
+            <button className="primary-action" onClick={() => void submit()} disabled={saving || !title.trim()}>
+              {saving ? '保存中…' : mode === 'new' ? '创建' : '保存'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
