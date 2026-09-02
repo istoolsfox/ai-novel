@@ -1,61 +1,100 @@
-import { useParams } from 'react-router-dom';
-import { TriangleAlert, CheckCircle2, Sparkles, X, Check } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Check, Sparkles, TriangleAlert, X } from 'lucide-react';
 import { useRecords } from '../shell/useRecords';
+import { EmptyState, PageHeader } from '../ui/basics';
 
 export function Consistency() {
+  const navigate = useNavigate();
   const { projectId } = useParams();
-  const { records: foreshadowings, update } = useRecords(projectId, 'foreshadowings');
+  const { records: foreshadowings, update, reload } = useRecords(projectId, 'foreshadowings');
 
-  const openIssues = foreshadowings.filter((f) => (f.status ?? 'open') !== 'resolved')
-    .map((f) => ({ id: f.id, title: '未回收伏笔', detail: f.title, from: 'Foreshadowing' }));
+  const openIssues = foreshadowings.filter((item) => item.status !== 'resolved');
+  const resolved = foreshadowings.length - openIssues.length;
+  const health = foreshadowings.length === 0 ? 100 : Math.round((resolved / foreshadowings.length) * 100);
 
   const groups = [
-    { label: 'Foreshadowing', count: openIssues.length, issues: openIssues, tone: 'warn' },
-    { label: 'World', count: 0, issues: [], tone: 'ok' },
-    { label: 'Plot', count: 0, issues: [], tone: 'ok' },
+    { label: '伏笔未回收', icon: TriangleAlert, issues: openIssues },
+    { label: '已回收 / 已忽略', icon: Check, issues: foreshadowings.filter((item) => item.status === 'resolved') },
   ];
 
-  const total = foreshadowings.length;
-  const unresolved = openIssues.length;
-  const ok = total === 0 ? 100 : total > 0 ? Math.max(0, 100 - Math.round((unresolved / total) * 100)) : 100;
-
   return (
-    <div>
-      <h1>Consistency Center</h1>
-      <p className="os-page-sub">故事一致性体检：角色 / 时间线 / 世界 / 剧情 / 伏笔</p>
+    <div className="page-inner">
+      <PageHeader
+        title="一致性体检"
+        sub="当前基于伏笔台账评估故事健康度：未回收的伏笔是读者眼里最大的不一致。"
+      />
 
-      <section className="os-card" style={{ maxWidth: '420px' }}>
-        <div className="os-card-header"><strong>Overall Health</strong><strong style={{ color: 'var(--ai-accent)' }}>{ok}%</strong></div>
-        <div className="os-progress"><span style={{ width: `${ok}%` }} /></div>
-      </section>
-
-      <div className="os-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', marginTop: '1rem' }}>
-        {groups.map((g) => (
-          <section className="os-card" key={g.label}>
-            <div className="os-card-header">
-              <strong>{g.label}</strong>
-              <small style={{ color: g.tone === 'warn' ? '#d97706' : '#1a7f37' }}>{g.count > 0 ? `⚠ ${g.count}` : '✓ No Issues'}</small>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.82rem' }}>
-              {g.issues.map((issue) => (
-                <div key={issue.id} style={{ border: '1px solid var(--n-border)', borderRadius: '8px', padding: '0.5rem 0.6rem' }}>
-                  <div style={{ alignItems: 'center', display: 'flex', gap: '0.4rem' }}>
-                    <TriangleAlert size={14} style={{ color: '#d97706' }} />
-                    <strong style={{ flex: 1 }}>{issue.title}</strong>
-                    <button className="os-icon-btn" title="忽略" onClick={() => update(issue.id, { status: 'resolved' })}><X size={14} /></button>
-                  </div>
-                  <small style={{ color: 'var(--n-text-2)', display: 'block', margin: '0.3rem 0' }}>{issue.detail}</small>
-                  <div style={{ display: 'flex', gap: '0.4rem' }}>
-                    <button className="os-btn ai" style={{ fontSize: '0.74rem', padding: '0.2rem 0.45rem' }}><Sparkles size={12} /> AI 修复</button>
-                    <button className="os-btn" style={{ fontSize: '0.74rem', padding: '0.2rem 0.45rem' }}><Check size={12} /> 已解决</button>
-                  </div>
-                </div>
-              ))}
-              {g.issues.length === 0 && <div className="os-empty" style={{ padding: 0 }}>无问题</div>}
-            </div>
-          </section>
-        ))}
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+        <div className="card">
+          <div className="card-head"><b>故事健康度</b></div>
+          <div className="stat-value" style={{ color: health >= 80 ? 'var(--ok)' : health >= 50 ? 'var(--warn)' : 'var(--danger)' }}>{health}%</div>
+          <div className="progress" style={{ marginTop: 10 }}>
+            <span style={{ width: `${health}%`, background: health >= 80 ? 'var(--ok)' : health >= 50 ? 'var(--warn)' : 'var(--danger)' }} />
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-head"><b>伏笔台账</b></div>
+          <div className="stat-value">{foreshadowings.length}</div>
+          <div className="stat-label">共 {resolved} 条已回收 · {openIssues.length} 条待处理</div>
+        </div>
+        <div className="card">
+          <div className="card-head"><b>深入体检</b></div>
+          <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.7 }}>
+            连续性检查、时间线与知识边界校验由自动托管流程在每章定稿时运行。
+          </p>
+          <button className="btn" style={{ marginTop: 10 }} onClick={() => navigate(`/projects/${projectId}/ai`)}>
+            <Sparkles size={13} /> 前往 AI 工作室
+          </button>
+        </div>
       </div>
+
+      <section className="section">
+        {foreshadowings.length === 0 ? (
+          <EmptyState
+            icon={<Sparkles size={26} />}
+            title="还没有可体检的伏笔数据"
+            hint="伏笔会在章节定稿与记忆编译时自动提取，也可以在 AI 工作室生成。"
+          />
+        ) : (
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            {groups.map((group) => {
+              const Icon = group.icon;
+              return (
+                <section className="card" key={group.label}>
+                  <div className="card-head">
+                    <b style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon size={14} /> {group.label}</b>
+                    <span className={group.label.includes('未回收') ? 'badge warn' : 'badge ok'}>{group.issues.length}</span>
+                  </div>
+                  <div className="stack" style={{ gap: 8 }}>
+                    {group.issues.map((issue) => (
+                      <div key={issue.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px' }}>
+                        <div className="row-flex">
+                          <b style={{ flex: 1, fontSize: 13 }}>{issue.title}</b>
+                          {group.label.includes('未回收') ? (
+                            <>
+                              <button className="btn" style={{ fontSize: 12, padding: '4px 10px' }}
+                                onClick={() => void update(issue.id, { title: issue.title, category: issue.category, content: issue.content, payload: issue.payload, status: 'resolved' }).then(reload)}>
+                                <Check size={12} /> 标记回收
+                              </button>
+                              <button className="icon-btn" aria-label="忽略" onClick={() => void update(issue.id, { title: issue.title, category: issue.category, content: issue.content, payload: issue.payload, status: 'ignored' }).then(reload)}>
+                                <X size={13} />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="badge ok">{issue.status === 'resolved' ? '已回收' : '已忽略'}</span>
+                          )}
+                        </div>
+                        {issue.content && <p className="muted" style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.7 }}>{issue.content.slice(0, 120)}</p>}
+                      </div>
+                    ))}
+                    {group.issues.length === 0 && <p className="muted" style={{ fontSize: 12.5 }}>暂无</p>}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

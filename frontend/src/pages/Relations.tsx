@@ -1,107 +1,194 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Network, Sparkles } from 'lucide-react';
-import { useRecords } from '../shell/useRecords';
+import { History, Network, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { GenericRecord } from '../api';
+import { useRecords } from '../shell/useRecords';
+import { ConfirmDialog, EmptyState, PageHeader } from '../ui/basics';
+import { AIGenerateModal } from '../components/AIGenerateModal';
+import { HistoryDrawer } from '../components/HistoryDrawer';
+import { FieldDef, RecordFormModal } from '../components/RecordFormModal';
 
-function relPayload(r: GenericRecord) {
-  return {
-    source: (r.payload?.source_character as string) ?? r.content?.split('→')[0]?.trim() ?? '',
-    target: (r.payload?.target_character as string) ?? r.content?.split('→')[1]?.trim() ?? '',
-    type: (r.payload?.relationship_type as string) ?? r.category ?? '朋友',
-    strength: (r.payload?.strength as number) ?? 50,
-  };
+const RESOURCE = 'character-relationships';
+
+const RELATION_TYPES = ['盟友', '爱人', '亲情', '师徒', '仇敌', '对手', '竞争', '上下级', '陌路'];
+
+const RELATION_FIELDS: FieldDef[] = [
+  { key: 'payload.source_character', label: '角色 A', required: true, placeholder: '角色名' },
+  { key: 'payload.target_character', label: '角色 B', required: true, placeholder: '角色名' },
+  { key: 'payload.relationship_type', label: '关系类型', type: 'select', options: RELATION_TYPES },
+  { key: 'payload.strength', label: '关系强度（0-100）', type: 'range' },
+  { key: 'payload.conflict', label: '张力 / 冲突', type: 'textarea', rows: 2, placeholder: '两人之间未解决的是什么？' },
+  { key: 'payload.change_history', label: '关系变化', type: 'textarea', rows: 2, placeholder: '从什么变成什么？因什么事件？' },
+];
+
+type RelPayload = {
+  source_character?: string;
+  target_character?: string;
+  relationship_type?: string;
+  strength?: number | string;
+  conflict?: string;
+  change_history?: string;
+};
+
+function relPayload(record: GenericRecord): RelPayload {
+  return (record.payload ?? {}) as RelPayload;
 }
 
 export function Relations() {
   const { projectId } = useParams();
-  const { records, create, update, remove } = useRecords(projectId, 'character-relationships');
-  const [editing, setEditing] = useState<{ id?: string; source: string; target: string; type: string; strength: number }>({ source: '', target: '', type: '朋友', strength: 50 });
-  const [open, setOpen] = useState(false);
+  const { records, create, update, remove, reload } = useRecords(projectId, RESOURCE);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<GenericRecord | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [historyFor, setHistoryFor] = useState<GenericRecord | null>(null);
+  const [deleting, setDeleting] = useState<GenericRecord | null>(null);
 
-  const save = async () => {
-    if (!editing.source.trim() || !editing.target.trim()) return;
-    const payload: Partial<GenericRecord> = {
-      title: `${editing.source} → ${editing.target}`,
-      category: editing.type,
-      content: `${editing.source} → ${editing.target}`,
+  const saveForm = async (values: Partial<GenericRecord>) => {
+    const payload = (values.payload ?? {}) as RelPayload;
+    const complete = {
+      ...values,
+      title: `${payload.source_character ?? ''} → ${payload.target_character ?? ''}`,
+      content: `${payload.source_character ?? ''} → ${payload.target_character ?? ''}`,
+      category: payload.relationship_type ?? '',
       status: 'active',
-      payload: { source_character: editing.source, target_character: editing.target, relationship_type: editing.type, strength: editing.strength },
     };
-    if (editing.id) await update(editing.id, payload);
-    else await create(payload);
-    setOpen(false);
-    setEditing({ source: '', target: '', type: '朋友', strength: 50 });
+    if (values.id) {
+      await update(String(values.id), complete);
+      return;
+    }
+    await create(complete);
   };
 
   return (
-    <div>
-      <div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
-        <div>
-          <h1>Relations</h1>
-          <p className="os-page-sub">人物关系、同盟、冲突与变化</p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button className="os-btn">Auto Layout</button>
-          <button className="os-btn ai"><Sparkles size={14} /> AI Analyze</button>
-          <button className="os-btn os-btn-primary" onClick={() => { setEditing({ source: '', target: '', type: '朋友', strength: 50 }); setOpen(true); }}>
-            <Plus size={15} /> Add Relation
-          </button>
-        </div>
-      </div>
+    <div className="page-inner wide">
+      <PageHeader
+        title="人物关系"
+        sub="关系是剧情的发动机：记录同盟、冲突、亲疏与变化，AI 正文生成会引用这些设定。"
+        actions={
+          <>
+            <button className="btn" onClick={() => { setEditing(null); setFormOpen(true); }}>
+              <Plus size={14} /> 新建关系
+            </button>
+            <button className="btn btn-ai" onClick={() => setAiOpen(true)}>
+              <Sparkles size={14} /> AI 梳理关系
+            </button>
+          </>
+        }
+      />
 
-      <div className="os-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', marginTop: '0.5rem' }}>
-        {records.map((r) => {
-          const p = relPayload(r);
-          return (
-            <div className="os-card" key={r.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <div style={{ alignItems: 'center', display: 'flex', gap: '0.4rem' }}>
-                <Network size={15} style={{ color: 'var(--ai-accent)' }} />
-                <strong style={{ flex: 1 }}>{p.source} ↔ {p.target}</strong>
-                <button className="os-icon-btn" title="编辑" onClick={() => { setEditing({ id: r.id, ...p }); setOpen(true); }}><Pencil size={14} /></button>
-                <button className="os-icon-btn" title="删除" onClick={() => remove(r.id)}><Trash2 size={14} /></button>
-              </div>
-              <span className={`os-badge ${p.type === 'Romance' ? 'editing' : 'done'}`}>{p.type}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div className="os-progress" style={{ flex: 1 }}><span style={{ width: `${p.strength}%` }} /></div>
-                <small style={{ color: 'var(--n-text-2)' }}>{p.strength}%</small>
-              </div>
-            </div>
-          );
-        })}
-        {records.length === 0 && <div className="os-empty">暂无关系，点击 Add Relation。</div>}
-      </div>
-
-      {open && (
-        <div className="project-modal-backdrop" onClick={() => setOpen(false)}>
-          <div className="project-modal" role="dialog" aria-label="编辑关系" onClick={(e) => e.stopPropagation()}>
-            <div className="project-modal-head">
-              <strong>{editing.id ? '编辑关系' : '新增关系'}</strong>
-              <button className="project-modal-close" onClick={() => setOpen(false)}>✕</button>
-            </div>
-            <div className="project-modal-body">
-              <label><span>角色 A</span><input value={editing.source} onChange={(e) => setEditing({ ...editing, source: e.target.value })} autoFocus /></label>
-              <label><span>角色 B</span><input value={editing.target} onChange={(e) => setEditing({ ...editing, target: e.target.value })} /></label>
-              <label>
-                <span>关系类型</span>
-                <select value={editing.type} onChange={(e) => setEditing({ ...editing, type: e.target.value })}>
-                  {['朋友', '爱人', '仇敌', '盟友', 'Romance', 'Rival', 'Family', '同事'].map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>强度 {editing.strength}%</span>
-                <input type="range" min="0" max="100" value={editing.strength} onChange={(e) => setEditing({ ...editing, strength: Number(e.target.value) })} />
-              </label>
-            </div>
-            <div className="project-modal-actions">
-              <span />
-              <div className="project-modal-action-right">
-                <button onClick={() => setOpen(false)}>取消</button>
-                <button className="primary-action" onClick={() => void save()} disabled={!editing.source.trim() || !editing.target.trim()}>{editing.id ? '保存' : '创建'}</button>
-              </div>
-            </div>
-          </div>
+      {records.length === 0 ? (
+        <EmptyState
+          icon={<Network size={26} />}
+          title="还没有人物关系"
+          hint="先创建人物，再在这里把人物两两连接起来。"
+          action={
+            <button className="btn btn-ai" onClick={() => setAiOpen(true)}>
+              <Sparkles size={14} /> AI 梳理关系
+            </button>
+          }
+        />
+      ) : (
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+          {records.map((record) => {
+            const payload = relPayload(record);
+            const strength = Number(payload.strength ?? 50);
+            return (
+              <article key={record.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="row-flex">
+                  <b style={{ fontFamily: 'var(--serif)', fontSize: 15.5, flex: 1 }}>
+                    {payload.source_character || '?'} <span className="muted" style={{ fontWeight: 400 }}>与</span> {payload.target_character || '?'}
+                  </b>
+                  <button className="icon-btn" aria-label="编辑关系" onClick={() => { setEditing(record); setFormOpen(true); }}>
+                    <Pencil size={13} />
+                  </button>
+                  <button className="icon-btn" aria-label="关系历史" onClick={() => setHistoryFor(record)}>
+                    <History size={13} />
+                  </button>
+                  <button className="icon-btn" aria-label="删除关系" onClick={() => setDeleting(record)}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                <div className="row-flex">
+                  <span className="badge accent">{payload.relationship_type || record.category || '关系'}</span>
+                  <div className="progress grow"><span style={{ width: `${Math.max(0, Math.min(100, strength))}%` }} /></div>
+                  <small className="muted" style={{ width: 34, textAlign: 'right' }}>{strength}%</small>
+                </div>
+                {payload.conflict && (
+                  <p style={{ fontSize: 12.5, lineHeight: 1.7 }}>
+                    <span className="muted">张力 · </span>{payload.conflict}
+                  </p>
+                )}
+                {payload.change_history && (
+                  <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.7 }}>
+                    <span>变化 · </span>{payload.change_history}
+                  </p>
+                )}
+              </article>
+            );
+          })}
         </div>
+      )}
+
+      {formOpen && (
+        <RecordFormModal
+          modalTitle={editing ? '编辑关系' : '新建关系'}
+          fields={RELATION_FIELDS}
+          record={editing}
+          extraValues={editing ? undefined : { payload: { relationship_type: '盟友', strength: '50' } }}
+          onClose={() => setFormOpen(false)}
+          onSave={saveForm}
+        />
+      )}
+
+      {aiOpen && projectId && (
+        <AIGenerateModal
+          projectId={projectId}
+          title="AI 梳理人物关系"
+          intro="AI 会基于现有人物档案提出关系建议，保存后仍可修改。"
+          workflow="extract_relationships"
+          buildPayload={(prompt) => ({ prompt, content: prompt })}
+          onSave={async (items) => {
+            for (const item of items) {
+              const payload = (item.payload ?? {}) as RelPayload;
+              await create({
+                title: `${payload.source_character ?? item.title} → ${payload.target_character ?? ''}`,
+                category: payload.relationship_type ?? '',
+                content: item.content,
+                payload: payload as Record<string, unknown>,
+                status: 'active',
+              });
+            }
+            await reload();
+          }}
+          onClose={() => setAiOpen(false)}
+        />
+      )}
+
+      {historyFor && projectId && (
+        <HistoryDrawer
+          projectId={projectId}
+          resource={RESOURCE}
+          record={historyFor}
+          onClose={() => setHistoryFor(null)}
+          onRestored={(updated) => {
+            void reload();
+            setHistoryFor((prev) => (prev ? { ...prev, ...updated } : prev));
+          }}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          title="删除关系"
+          danger
+          confirmLabel="删除"
+          message={<>将删除这条关系及其历史版本。</>}
+          onConfirm={() => {
+            void remove(deleting.id);
+            setDeleting(null);
+          }}
+          onCancel={() => setDeleting(null)}
+        />
       )}
     </div>
   );

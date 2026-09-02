@@ -41,6 +41,19 @@ export type GenericRecord = {
   status: string;
 };
 
+export type RecordRevision = {
+  id: string;
+  resource: string;
+  record_id: string;
+  title: string;
+  category: string;
+  content: string;
+  payload?: Record<string, unknown>;
+  status: string;
+  origin: string;
+  created_at: string;
+};
+
 export type CharacterProfilePayload = {
   name: string;
   role: string;
@@ -119,6 +132,7 @@ export type AiResult = {
   structured?: unknown;
   context?: unknown;
   score: number;
+  model?: string;
   status?: string;
   error?: string;
   items: Array<{ title: string; content: string }>;
@@ -238,6 +252,13 @@ export const api = {
     }),
   deleteRecord: (projectId: string, resource: string, recordId: string) =>
     request<{ ok: boolean }>(`/api/projects/${projectId}/${resource}/${recordId}`, { method: 'DELETE' }),
+  listRecordRevisions: (projectId: string, resource: string, recordId: string) =>
+    request<RecordRevision[]>(`/api/projects/${projectId}/${resource}/${recordId}/revisions`),
+  restoreRecordRevision: (projectId: string, resource: string, recordId: string, revisionId: string) =>
+    request<GenericRecord>(
+      `/api/projects/${projectId}/${resource}/${recordId}/revisions/${revisionId}/restore`,
+      { method: 'POST' },
+    ),
   runAi: (projectId: string, workflow: string, payload: Record<string, unknown>) =>
     request<AiResult>(`/api/projects/${projectId}/ai/${workflow}`, {
       method: 'POST',

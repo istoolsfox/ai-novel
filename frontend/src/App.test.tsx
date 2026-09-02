@@ -98,7 +98,7 @@ test('renders dedicated style learning workflow', () => {
 test('starts the default chapter tab in focused writing mode', () => {
   render(<App />);
 
-  expect(screen.getByText('沉浸式小说创作空间')).toBeInTheDocument();
+  expect(screen.getByText('写作 · 自动保存')).toBeInTheDocument();
   expect(screen.queryByLabelText('当前功能说明')).not.toBeInTheDocument();
   expect(screen.queryByText('专注模式')).not.toBeInTheDocument();
 });

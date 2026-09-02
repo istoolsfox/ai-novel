@@ -1,84 +1,192 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Globe } from 'lucide-react';
-import { useRecords } from '../shell/useRecords';
+import { Globe, History, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { GenericRecord } from '../api';
+import { useRecords } from '../shell/useRecords';
+import { ConfirmDialog, EmptyState, PageHeader } from '../ui/basics';
+import { AIGenerateModal } from '../components/AIGenerateModal';
+import { HistoryDrawer } from '../components/HistoryDrawer';
+import { FieldDef, RecordFormModal } from '../components/RecordFormModal';
 
-const CATEGORIES = ['Locations', 'Organizations', 'Companies', 'Families', 'Countries', 'Rules', 'Objects'];
+const RESOURCE = 'world-settings';
+
+const CATEGORIES = [
+  { value: 'Locations', label: '地点' },
+  { value: 'Organizations', label: '组织' },
+  { value: 'Companies', label: '企业' },
+  { value: 'Families', label: '家族' },
+  { value: 'Countries', label: '国家 / 势力' },
+  { value: 'Rules', label: '世界运行逻辑' },
+  { value: 'Objects', label: '关键物品' },
+];
+
+const WORLD_FIELDS: FieldDef[] = [
+  { key: 'title', label: '名称', required: true, placeholder: '如：灰塔旧城区' },
+  { key: 'category', label: '类别', type: 'select', options: CATEGORIES.map((item) => item.value) },
+  { key: 'content', label: '设定说明', type: 'textarea', rows: 6, placeholder: '这个地方/组织/规则如何运作？与主线有什么关系？' },
+];
 
 export function World() {
   const { projectId } = useParams();
-  const { records, create, update, remove } = useRecords(projectId, 'world-settings');
-  const [editing, setEditing] = useState<{ id?: string; title: string; category: string; content: string }>({ title: '', category: 'Locations', content: '' });
-  const [open, setOpen] = useState(false);
+  const { records, create, update, remove, reload } = useRecords(projectId, RESOURCE);
+  const [activeCategory, setActiveCategory] = useState('Locations');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<GenericRecord | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [historyFor, setHistoryFor] = useState<GenericRecord | null>(null);
+  const [deleting, setDeleting] = useState<GenericRecord | null>(null);
 
-  const save = async () => {
-    if (!editing.title.trim()) return;
-    const payload: Partial<GenericRecord> = { title: editing.title, category: editing.category, content: editing.content, status: 'active' };
-    if (editing.id) await update(editing.id, payload);
-    else await create(payload);
-    setOpen(false);
-    setEditing({ title: '', category: 'Locations', content: '' });
+  const categoryLabel = (value: string) => CATEGORIES.find((item) => item.value === value)?.label ?? value;
+  const scoped = records.filter((record) => record.category === activeCategory);
+
+  const saveForm = async (values: Partial<GenericRecord>) => {
+    if (values.id) {
+      await update(String(values.id), values);
+      return;
+    }
+    await create(values);
   };
 
   return (
-    <div>
-      <div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
-        <div>
-          <h1>World</h1>
-          <p className="os-page-sub">世界观实体：地点 / 组织 / 公司 / 家族 / 国家 / 规则 / 物品</p>
-        </div>
-        <button className="os-btn os-btn-primary" onClick={() => { setEditing({ title: '', category: 'Locations', content: '' }); setOpen(true); }}>
-          <Plus size={15} /> Add Entity
-        </button>
-      </div>
+    <div className="page-inner wide">
+      <PageHeader
+        title="世界观"
+        sub="地点、组织、家族、国家、关键物品，以及世界运行逻辑（Rules）——它们共同支撑小说的可信度。"
+        actions={
+          <>
+            <button className="btn" onClick={() => { setEditing(null); setFormOpen(true); }}>
+              <Plus size={14} /> 新建实体
+            </button>
+            <button className="btn btn-ai" onClick={() => setAiOpen(true)}>
+              <Sparkles size={14} /> AI 生成设定
+            </button>
+          </>
+        }
+      />
 
-      <div className="os-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', marginTop: '0.5rem' }}>
-        {CATEGORIES.filter((cat) => records.some((r) => r.category === cat)).map((cat) => (
-          <section className="os-card" key={cat}>
-            <div className="os-card-header"><strong>{cat}</strong><small>{records.filter((r) => r.category === cat).length}</small></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '0.85rem' }}>
-              {records.filter((r) => r.category === cat).map((r) => (
-                <div key={r.id} style={{ alignItems: 'center', display: 'flex', gap: '0.4rem', padding: '0.3rem 0' }}>
-                  <Globe size={14} style={{ color: 'var(--n-muted)' }} />
-                  <button className="os-nav-item" style={{ flex: 1, padding: '0.1rem 0.2rem' }} onClick={() => { setEditing({ id: r.id, title: r.title, category: r.category, content: r.content }); setOpen(true); }}>
-                    <span>{r.title}</span>
-                  </button>
-                  <button className="os-icon-btn" title="删除" onClick={() => remove(r.id)}><Trash2 size={14} /></button>
-                </div>
-              ))}
-            </div>
-          </section>
+      <div className="tabs" role="tablist" aria-label="世界观分类">
+        {CATEGORIES.map((category) => (
+          <button
+            key={category.value}
+            role="tab"
+            aria-selected={activeCategory === category.value}
+            className={activeCategory === category.value ? 'tab active' : 'tab'}
+            onClick={() => setActiveCategory(category.value)}
+          >
+            {category.label}
+            <span className="muted" style={{ marginLeft: 4 }}>
+              {records.filter((record) => record.category === category.value).length || ''}
+            </span>
+          </button>
         ))}
-        {records.length === 0 && <div className="os-empty">还没有世界观实体，点击上方 Add Entity。</div>}
       </div>
 
-      {open && (
-        <div className="project-modal-backdrop" onClick={() => setOpen(false)}>
-          <div className="project-modal" style={{ maxWidth: '460px' }} role="dialog" aria-label="编辑世界观实体" onClick={(e) => e.stopPropagation()}>
-            <div className="project-modal-head">
-              <strong>{editing.id ? '编辑实体' : '新增实体'}</strong>
-              <button className="project-modal-close" onClick={() => setOpen(false)}>✕</button>
-            </div>
-            <div className="project-modal-body">
-              <label><span>名称</span><input value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} autoFocus /></label>
-              <label>
-                <span>类别</span>
-                <select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
-                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </label>
-              <label><span>说明</span><textarea value={editing.content} onChange={(e) => setEditing({ ...editing, content: e.target.value })} rows={4} /></label>
-            </div>
-            <div className="project-modal-actions">
-              <span />
-              <div className="project-modal-action-right">
-                <button onClick={() => setOpen(false)}>取消</button>
-                <button className="primary-action" onClick={() => void save()} disabled={!editing.title.trim()}>{editing.id ? '保存' : '创建'}</button>
+      <section className="section" style={{ marginTop: 20 }}>
+        {scoped.length === 0 ? (
+          <EmptyState
+            icon={<Globe size={26} />}
+            title={`暂无「${categoryLabel(activeCategory)}」`}
+            hint="手动添加，或让 AI 围绕你的故事概念生成一批设定。"
+            action={
+              <div className="row-flex">
+                <button className="btn" onClick={() => { setEditing(null); setFormOpen(true); }}>
+                  <Plus size={14} /> 新建
+                </button>
+                <button className="btn btn-ai" onClick={() => setAiOpen(true)}>
+                  <Sparkles size={14} /> AI 生成
+                </button>
               </div>
-            </div>
+            }
+          />
+        ) : (
+          <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+            {scoped.map((record) => (
+              <article key={record.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div className="row-flex">
+                  <b style={{ fontFamily: 'var(--serif)', fontSize: 15.5, flex: 1 }}>{record.title}</b>
+                  <button className="icon-btn" aria-label={`编辑 ${record.title}`} onClick={() => { setEditing(record); setFormOpen(true); }}>
+                    <Pencil size={13} />
+                  </button>
+                  <button className="icon-btn" aria-label={`${record.title} 历史`} onClick={() => setHistoryFor(record)}>
+                    <History size={13} />
+                  </button>
+                  <button className="icon-btn" aria-label={`删除 ${record.title}`} onClick={() => setDeleting(record)}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.75, flex: 1 }}>
+                  {record.content || '暂无说明'}
+                </p>
+                <span className="badge" style={{ alignSelf: 'flex-start' }}>{categoryLabel(record.category)}</span>
+              </article>
+            ))}
           </div>
-        </div>
+        )}
+      </section>
+
+      {formOpen && (
+        <RecordFormModal
+          modalTitle={editing ? `编辑 · ${editing.title}` : `新建${categoryLabel(activeCategory)}`}
+          fields={WORLD_FIELDS}
+          record={editing}
+          extraValues={editing ? undefined : { category: activeCategory }}
+          onClose={() => setFormOpen(false)}
+          onSave={saveForm}
+        />
+      )}
+
+      {aiOpen && projectId && (
+        <AIGenerateModal
+          projectId={projectId}
+          title="AI 生成世界观设定"
+          intro="AI 会生成地点、组织、规则、物品等一组设定；保存后可逐条修改，修改会自动保留版本。"
+          workflow="generate_setting"
+          buildPayload={(prompt) => ({
+            prompt: prompt || `围绕当前项目生成${categoryLabel(activeCategory)}相关的设定`,
+            existing_world: records.map((record) => ({ title: record.title, category: record.category })),
+          })}
+          onSave={async (items) => {
+            for (const item of items) {
+              const payload = (item.payload ?? {}) as Record<string, unknown>;
+              await create({
+                title: item.title,
+                category: typeof payload.category === 'string' && payload.category ? payload.category : activeCategory,
+                content: item.content,
+                payload,
+                status: 'active',
+              });
+            }
+            await reload();
+          }}
+          onClose={() => setAiOpen(false)}
+        />
+      )}
+
+      {historyFor && projectId && (
+        <HistoryDrawer
+          projectId={projectId}
+          resource={RESOURCE}
+          record={historyFor}
+          onClose={() => setHistoryFor(null)}
+          onRestored={(updated) => {
+            void reload();
+            setHistoryFor((prev) => (prev ? { ...prev, ...updated } : prev));
+          }}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          title="删除实体"
+          danger
+          confirmLabel="删除"
+          message={<>将删除「<b>{deleting.title}</b>」及其全部历史版本。</>}
+          onConfirm={() => {
+            void remove(deleting.id);
+            setDeleting(null);
+          }}
+          onCancel={() => setDeleting(null)}
+        />
       )}
     </div>
   );

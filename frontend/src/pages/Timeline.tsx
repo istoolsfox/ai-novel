@@ -1,78 +1,129 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Clock } from 'lucide-react';
-import { useRecords } from '../shell/useRecords';
+import { BookMarked, History, Pencil, Plus, Trash2 } from 'lucide-react';
 import { GenericRecord } from '../api';
+import { useRecords } from '../shell/useRecords';
+import { ConfirmDialog, EmptyState, PageHeader } from '../ui/basics';
+import { HistoryDrawer } from '../components/HistoryDrawer';
+import { FieldDef, RecordFormModal } from '../components/RecordFormModal';
 
-function eventTime(r: GenericRecord) {
-  return (r.payload && typeof r.payload.event_time === 'string') ? r.payload.event_time : r.title;
-}
+const RESOURCE = 'timeline-events';
+
+const EVENT_FIELDS: FieldDef[] = [
+  { key: 'title', label: '时间标记', required: true, placeholder: '如：元年冬 / 第 12 章夜 / 三年后' },
+  { key: 'content', label: '事件', type: 'textarea', rows: 3, required: true, placeholder: '发生了什么？' },
+  { key: 'payload.consequence', label: '后果 / 影响', type: 'textarea', rows: 2, placeholder: '这件事如何影响后续剧情？' },
+];
 
 export function Timeline() {
   const { projectId } = useParams();
-  const { records, create, update, remove } = useRecords(projectId, 'timeline-events');
-  const [editing, setEditing] = useState<{ id?: string; title: string; content: string }>({ title: '', content: '' });
-  const [open, setOpen] = useState(false);
-  const sorted = [...records].sort((a, b) => a.title.localeCompare(b.title, 'zh'));
+  const { records, create, update, remove, reload } = useRecords(projectId, RESOURCE);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<GenericRecord | null>(null);
+  const [historyFor, setHistoryFor] = useState<GenericRecord | null>(null);
+  const [deleting, setDeleting] = useState<GenericRecord | null>(null);
 
-  const save = async () => {
-    if (!editing.title.trim()) return;
-    const payload: Partial<GenericRecord> = { title: editing.title, category: 'timeline', content: editing.content, status: 'active' };
-    if (editing.id) await update(editing.id, payload);
-    else await create(payload);
-    setOpen(false);
-    setEditing({ title: '', content: '' });
-  };
+  const sorted = [...records].sort((left, right) => left.title.localeCompare(right.title, 'zh'));
 
   return (
-    <div>
-      <div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
-        <div>
-          <h1>Timeline</h1>
-          <p className="os-page-sub">事件顺序、因果与剧情节奏</p>
-        </div>
-        <button className="os-btn os-btn-primary" onClick={() => { setEditing({ title: '', content: '' }); setOpen(true); }}>
-          <Plus size={15} /> Add Event
-        </button>
-      </div>
+    <div className="page-inner">
+      <PageHeader
+        title="时间线"
+        sub="事件顺序与因果链。时间标记按字典序排列，建议使用「第 N 章」或「卷一章名」作为前缀。"
+        actions={
+          <button className="btn btn-primary" onClick={() => { setEditing(null); setFormOpen(true); }}>
+            <Plus size={14} /> 新建事件
+          </button>
+        }
+      />
 
-      <div style={{ overflowX: 'auto', padding: '1.5rem 0 0.5rem' }}>
-        <div style={{ alignItems: 'center', display: 'flex', gap: '0', minWidth: 'max-content', position: 'relative' }}>
-          <div style={{ position: 'absolute', top: '18px', left: '0', right: '0', height: '2px', background: 'var(--n-border)' }} />
-          {sorted.map((r, i) => (
-            <div key={r.id} style={{ alignItems: 'center', display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '130px', position: 'relative', zIndex: 1 }}>
-              <div style={{ background: 'var(--ai-accent)', border: '3px solid var(--n-surface)', borderRadius: '50%', height: '16px', width: '16px' }} />
-              <small style={{ color: 'var(--n-text-2)', textAlign: 'center' }}>{eventTime(r)}</small>
-              <div style={{ alignItems: 'center', display: 'flex', gap: '0.3rem' }}>
-                <button className="os-btn os-btn-ghost" style={{ fontSize: '0.78rem', padding: '0.15rem 0.3rem' }} onClick={() => { setEditing({ id: r.id, title: r.title, content: r.content }); setOpen(true); }}>{r.content || r.title}</button>
-                <button className="os-icon-btn" title="删除" style={{ height: 24, width: 24 }} onClick={() => remove(r.id)}><Trash2 size={13} /></button>
+      {sorted.length === 0 ? (
+        <EmptyState
+          icon={<BookMarked size={26} />}
+          title="还没有时间线事件"
+          hint="把关键事件按顺序排好，AI 生成正文时会参考因果链，避免前后矛盾。"
+        />
+      ) : (
+        <div className="timeline" style={{ marginTop: 8 }}>
+          {sorted.map((record, index) => {
+            const consequence = typeof record.payload?.consequence === 'string' ? record.payload.consequence : '';
+            return (
+              <div className="timeline-item" key={record.id}>
+                <div className="timeline-when">{record.title}</div>
+                <div className="timeline-axis">
+                  <span className="timeline-dot" />
+                  {index < sorted.length - 1 && <span className="timeline-line" />}
+                </div>
+                <article className="card timeline-card">
+                  <div className="row-flex">
+                    <b style={{ flex: 1, fontSize: 13.5 }}>{record.content?.split('\n')[0] || '（无内容）'}</b>
+                    <button className="icon-btn" aria-label="编辑事件" onClick={() => { setEditing(record); setFormOpen(true); }}>
+                      <Pencil size={13} />
+                    </button>
+                    <button className="icon-btn" aria-label="事件历史" onClick={() => setHistoryFor(record)}>
+                      <History size={13} />
+                    </button>
+                    <button className="icon-btn" aria-label="删除事件" onClick={() => setDeleting(record)}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                  {record.content?.includes('\n') && (
+                    <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.75, marginTop: 8, whiteSpace: 'pre-wrap' }}>
+                      {record.content.split('\n').slice(1).join('\n').trim()}
+                    </p>
+                  )}
+                  {consequence && (
+                    <p style={{ fontSize: 12.5, lineHeight: 1.75, marginTop: 8 }}>
+                      <span className="badge warn" style={{ marginRight: 8 }}>后果</span>
+                      {consequence}
+                    </p>
+                  )}
+                </article>
               </div>
-            </div>
-          ))}
-          {records.length === 0 && <div className="os-empty" style={{ position: 'static' }}>暂无时间线事件</div>}
+            );
+          })}
         </div>
-      </div>
+      )}
 
-      {open && (
-        <div className="project-modal-backdrop" onClick={() => setOpen(false)}>
-          <div className="project-modal" role="dialog" aria-label="编辑时间线事件" onClick={(e) => e.stopPropagation()}>
-            <div className="project-modal-head">
-              <strong>{editing.id ? '编辑事件' : '新增事件'}</strong>
-              <button className="project-modal-close" onClick={() => setOpen(false)}>✕</button>
-            </div>
-            <div className="project-modal-body">
-              <label><span>时间 / 标记</span><input value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} autoFocus placeholder="如：2025 / CH12" /></label>
-              <label><span>事件</span><textarea value={editing.content} onChange={(e) => setEditing({ ...editing, content: e.target.value })} rows={3} /></label>
-            </div>
-            <div className="project-modal-actions">
-              <span />
-              <div className="project-modal-action-right">
-                <button onClick={() => setOpen(false)}>取消</button>
-                <button className="primary-action" onClick={() => void save()} disabled={!editing.title.trim()}>{editing.id ? '保存' : '创建'}</button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {formOpen && (
+        <RecordFormModal
+          modalTitle={editing ? '编辑事件' : '新建事件'}
+          fields={EVENT_FIELDS}
+          record={editing}
+          onClose={() => setFormOpen(false)}
+          onSave={async (values) => {
+            const payload = { ...(values.payload ?? {}) };
+            if (values.id) await update(String(values.id), { ...values, category: 'timeline', status: 'active', payload });
+            else await create({ ...values, category: 'timeline', status: 'active' });
+          }}
+        />
+      )}
+
+      {historyFor && projectId && (
+        <HistoryDrawer
+          projectId={projectId}
+          resource={RESOURCE}
+          record={historyFor}
+          onClose={() => setHistoryFor(null)}
+          onRestored={(updated) => {
+            void reload();
+            setHistoryFor((prev) => (prev ? { ...prev, ...updated } : prev));
+          }}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          title="删除事件"
+          danger
+          confirmLabel="删除"
+          message={<>将删除事件「<b>{deleting.title}</b>」及其历史版本。</>}
+          onConfirm={() => {
+            void remove(deleting.id);
+            setDeleting(null);
+          }}
+          onCancel={() => setDeleting(null)}
+        />
       )}
     </div>
   );

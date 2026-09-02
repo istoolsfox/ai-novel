@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, Chapter, Project } from '../api';
 
 export function useProjects() {
@@ -22,13 +22,24 @@ export function useProject(projectId?: string) {
 export function useChapters(projectId?: string) {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    if (!projectId) return;
-    setLoading(true);
-    api.listChapters(projectId).then((items) => {
-      setChapters(items);
+  const reload = useCallback(async () => {
+    if (!projectId) {
+      setChapters([]);
       setLoading(false);
-    }).catch(() => setLoading(false));
+      return;
+    }
+    try {
+      const items = await api.listChapters(projectId);
+      setChapters(items);
+    } catch {
+      setChapters([]);
+    } finally {
+      setLoading(false);
+    }
   }, [projectId]);
-  return { chapters, loading };
+  useEffect(() => {
+    setLoading(true);
+    void reload();
+  }, [reload]);
+  return { chapters, loading, reload };
 }

@@ -1,194 +1,166 @@
-import { useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
-  Activity,
-  Bell,
-  Brain,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  FolderOpen,
+  BookMarked,
+  Compass,
+  Feather,
   Globe,
   HeartPulse,
-  Home,
   Library,
   Map,
   Network,
-  RefreshCw,
   Search,
   Settings,
   Sparkles,
   Users,
 } from 'lucide-react';
-import './shell.css';
+import { WorkspaceProvider, useWorkspace } from './workspace';
+import { ProjectSwitcher } from '../components/ProjectSwitcher';
 
-const CURRENT_PROJECT_NAV = [
-  { to: 'overview', label: 'Overview', icon: Home },
-  { to: 'story', label: 'Story', icon: Library },
-  { to: 'outline', label: 'Outline', icon: Map },
-  { to: 'characters', label: 'Characters', icon: Users },
-  { to: 'world', label: 'World', icon: Globe },
-  { to: 'relations', label: 'Relations', icon: Network },
-  { to: 'timeline', label: 'Timeline', icon: FileText },
-  { to: 'writing', label: 'Writing', icon: FileText },
-  { to: 'consistency', label: 'Consistency', icon: HeartPulse },
+const PROJECT_NAV = [
+  { to: 'overview', label: '总览', icon: Compass },
+  { to: 'story', label: '故事圣经', icon: Library },
+  { to: 'outline', label: '大纲', icon: Map },
+  { to: 'characters', label: '人物', icon: Users },
+  { to: 'world', label: '世界观', icon: Globe },
+  { to: 'relations', label: '人物关系', icon: Network },
+  { to: 'timeline', label: '时间线', icon: BookMarked },
+  { to: 'writing', label: '写作', icon: Feather },
+  { to: 'consistency', label: '一致性', icon: HeartPulse },
 ];
 
-export function AppShell() {
-  const [collapsed, setCollapsed] = useState(false);
-  const [aiOpen, setAiOpen] = useState(true);
+const PAGE_TITLES: Record<string, string> = {
+  dashboard: '工作台',
+  projects: '项目库',
+  overview: '总览',
+  story: '故事圣经',
+  outline: '大纲',
+  characters: '人物',
+  world: '世界观',
+  relations: '人物关系',
+  timeline: '时间线',
+  writing: '写作',
+  ai: 'AI 工作室',
+  consistency: '一致性',
+  settings: '设置',
+  command: '命令',
+};
+
+function ShellFrame() {
   const location = useLocation();
   const navigate = useNavigate();
   const params = useParams();
+  const { project, immersive } = useWorkspace();
   const projectId = params.projectId;
-  const projectTitle = params.projectId ? '小说项目' : 'Notion Saves';
 
-  const isEditor = /\/(writing|editor)/.test(location.pathname);
-  const showAi = aiOpen && !isEditor;
+  const segments = location.pathname.split('/').filter(Boolean);
+  const pageTitle = PAGE_TITLES[segments[segments.length - 1] ?? ''] ?? '';
 
-  const bodyClass = [
-    'os-body',
-    collapsed ? 'sidebar-collapsed' : '',
-    showAi ? 'with-ai' : '',
-  ].join(' ').replace(/\s+/g, ' ').trim();
+  if (immersive) {
+    return (
+      <div className="immersive-shell">
+        <Outlet />
+      </div>
+    );
+  }
 
   return (
-    <div className="os-shell">
-      <header className="os-topbar">
-        <button className="os-sidebar-brand" onClick={() => navigate('/')} title="回到首页" style={{ border: 'none', background: 'none', padding: 0 }}>
-          <span className="os-logo"><Brain size={16} /></span>
-        </button>
-        <div className="os-breadcrumb">
-          <span>Projects</span>
-          <ChevronRight size={14} />
-          <span>{projectId ? '雨夜玫瑰' : 'Dashboard'}</span>
-          {isEditor && (<><ChevronRight size={14} /><span>Chapter 38</span></>)}
+    <div className="shell">
+      <header className="topbar">
+        <div className="topbar-crumbs">
+          <span>项目库</span>
+          {project && (
+            <>
+              <span>/</span>
+              <b>{project.title}</b>
+            </>
+          )}
+          {pageTitle && (
+            <>
+              <span>/</span>
+              <span>{pageTitle}</span>
+            </>
+          )}
         </div>
-        <button className="os-topbar-search" onClick={() => navigate('/command')} aria-label="打开命令面板">
-          <Search size={14} />
-          <span>搜索或执行命令</span>
+        <div className="topbar-spacer" />
+        <button className="topbar-search" onClick={() => navigate('/command')} aria-label="打开命令面板">
+          <Search size={13} />
+          <span style={{ flex: 1, textAlign: 'left' }}>搜索或执行命令</span>
           <kbd>⌘K</kbd>
         </button>
-        <div className="os-topbar-right">
-          <button className="os-icon-btn" title="通知"><Bell size={16} /></button>
-          <button className="os-icon-btn" title="设置" onClick={() => navigate('/settings')}><Settings size={16} /></button>
-        </div>
       </header>
-      <div className={bodyClass}>
-        <aside className={collapsed ? 'os-sidebar os-sidebar-collapsed' : 'os-sidebar'}>
-          <div className="os-sidebar-brand">
-            <button className="os-logo" onClick={() => navigate('/dashboard')} title="Novel OS"><Brain size={16} /></button>
-            <strong>Novel OS</strong>
+      <div className="shell-body">
+        <aside className="sidebar">
+          <div className="brand">
+            <span className="brand-mark"><Feather size={15} /></span>
+            <span className="brand-name">Novel OS</span>
           </div>
-          <button className="os-collapse" onClick={() => setCollapsed(!collapsed)} title="折叠侧栏 (⌘B)">
-            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            <span>折叠</span>
-          </button>
 
-          <nav className="os-nav-group">
-            <div className="os-nav-group-label">Workspace</div>
-            <NavLink className={({ isActive }) => `os-nav-item${isActive ? ' active' : ''}`} to="/dashboard">
-              <Home size={16} />
-              <span>Dashboard</span>
+          <ProjectSwitcher />
+
+          <nav className="nav-group">
+            <div className="nav-label">工作台</div>
+            <NavLink to="/dashboard" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+              <Compass size={15} />
+              <span>总览面板</span>
             </NavLink>
-            <NavLink className={({ isActive }) => `os-nav-item${isActive ? ' active' : ''}`} to="/projects">
-              <FolderOpen size={16} />
-              <span>Projects</span>
+            <NavLink to="/projects" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`} end>
+              <Library size={15} />
+              <span>项目库</span>
             </NavLink>
           </nav>
 
-          <div className="os-nav-divider" />
+          <hr className="nav-sep" />
 
-          <nav className="os-nav-group">
-            <div className="os-nav-group-label">Current Project</div>
-            {CURRENT_PROJECT_NAV.map((item) => {
+          <nav className="nav-group">
+            <div className="nav-label">当前项目</div>
+            {PROJECT_NAV.map((item) => {
               const Icon = item.icon;
               return (
-                <NavLink key={item.to} className={({ isActive }) => `os-nav-item${isActive ? ' active' : ''}`} to={projectId ? `/projects/${projectId}/${item.to}` : '/projects'}>
-                  <Icon size={16} />
+                <NavLink
+                  key={item.to}
+                  className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+                  to={projectId ? `/projects/${projectId}/${item.to}` : '/projects'}
+                >
+                  <Icon size={15} />
                   <span>{item.label}</span>
                 </NavLink>
               );
             })}
           </nav>
 
-          <div className="os-nav-divider" />
+          <hr className="nav-sep" />
 
-          <nav className="os-nav-group">
-            <div className="os-nav-group-label">AI</div>
-            <button className="os-nav-item" onClick={() => { if (projectId) navigate(`/projects/${projectId}/ai`); }}>
-              <Sparkles size={16} className="os-ai-indicator" />
-              <span>AI Studio</span>
+          <nav className="nav-group">
+            <div className="nav-label">AI</div>
+            <button
+              className="nav-item ai"
+              onClick={() => navigate(projectId ? `/projects/${projectId}/ai` : '/projects')}
+            >
+              <Sparkles size={15} />
+              <span>AI 工作室</span>
             </button>
           </nav>
 
-          <nav className="os-nav-group">
-            <div className="os-nav-group-label">Data</div>
-            <button className="os-nav-item" onClick={() => navigate(projectId ? `/projects/${projectId}/analytics` : '/dashboard')}>
-              <Activity size={16} />
-              <span>Analytics</span>
+          <nav className="nav-group" style={{ marginTop: 'auto' }}>
+            <button className="nav-item" onClick={() => navigate('/settings')}>
+              <Settings size={15} />
+              <span>设置</span>
             </button>
           </nav>
-
-          <div className="os-sidebar-footer">
-            <button className="os-nav-item" onClick={() => setAiOpen(!aiOpen)} title="AI 面板 (⌘J)">
-              <Sparkles size={16} className="os-ai-indicator" />
-              <span>{aiOpen ? '收起 AI 面板' : '展开 AI 面板'}</span>
-            </button>
-          </div>
         </aside>
-        <main className="os-page">
+        <main className="page">
           <Outlet />
         </main>
-        {showAi && <AIPanel active />}
       </div>
     </div>
   );
 }
 
-function AIPanel({ active }: { active?: boolean }) {
+export function AppShell() {
+  const params = useParams();
   return (
-    <aside className="os-ai-panel">
-      <div className="os-ai-panel-head">
-        <strong><Sparkles size={15} /> AI Copilot</strong>
-        <span className="os-ai-chip">Context · 14 sources</span>
-      </div>
-      <div className="os-ai-section">
-        <h4>Current Chapter</h4>
-        <div className="os-ai-chip-list">
-          <span className="os-ai-chip">38 · 暴雨</span>
-        </div>
-      </div>
-      <div className="os-ai-section">
-        <h4>Characters</h4>
-        <div className="os-ai-chip-list">
-          <span className="os-ai-chip">林默</span>
-          <span className="os-ai-chip">苏晚</span>
-        </div>
-      </div>
-      <div className="os-ai-section">
-        <h4>Active Plotlines</h4>
-        <div className="os-ai-chip-list">
-          <span className="os-ai-chip ai">Identity Reveal</span>
-          <span className="os-ai-chip ai">Romance</span>
-        </div>
-      </div>
-      <div className="os-ai-section">
-        <h4>Foreshadowings</h4>
-        <div className="os-ai-chip-list">
-          <span className="os-ai-chip">Mysterious Ring</span>
-          <span className="os-ai-chip">Father's Death</span>
-        </div>
-      </div>
-      <div className="os-ai-section">
-        <h4>Quick Actions</h4>
-        <div className="os-ai-actions">
-          <button className="os-ai-action"><FileText size={14} /> Continue</button>
-          <button className="os-ai-action"><RefreshCw size={14} /> Rewrite</button>
-          <button className="os-ai-action"><Sparkles size={14} /> Expand</button>
-          <button className="os-ai-action"><Sparkles size={14} /> Polish</button>
-        </div>
-      </div>
-    </aside>
+    <WorkspaceProvider projectId={params.projectId}>
+      <ShellFrame />
+    </WorkspaceProvider>
   );
 }

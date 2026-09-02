@@ -1,37 +1,55 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Minimize2 } from 'lucide-react';
 import { NovelEditorPage } from '../components/NovelEditorPage';
 import { api, Chapter, ChapterVersion } from '../api';
-import { useChapters, useProject } from '../shell/useProject';
+import { useChapters } from '../shell/useProject';
+import { useWorkspace } from '../shell/workspace';
 
 export function Writing() {
-  const { projectId } = useParams();
-  const { project } = useProject(projectId);
-  const { chapters, loading } = useChapters(projectId);
+  const navigate = useNavigate();
+  const { projectId, chapterId } = useParams();
+  const { project } = useWorkspace();
+  const { chapters, reload } = useChapters(projectId);
+  const { immersive, setImmersive } = useWorkspace();
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [draft, setDraft] = useState('');
   const [versions, setVersions] = useState<ChapterVersion[]>([]);
   const [log, setLog] = useState('');
   const [wikiPageCount, setWikiPageCount] = useState(0);
 
-  const effectiveSelected = selectedChapter ?? chapters[0] ?? null;
+  const effectiveSelected = useMemo(
+    () =>
+      selectedChapter && chapters.some((chapter) => chapter.id === selectedChapter.id)
+        ? selectedChapter
+        : chapterId
+          ? chapters.find((chapter) => chapter.id === chapterId) ?? null
+          : chapters[0] ?? null,
+    [selectedChapter, chapters, chapterId],
+  );
 
   const loadChapter = (chapter: Chapter) => {
     setSelectedChapter(chapter);
     setDraft(chapter.draft ?? '');
     setLog('');
+    navigate(`/projects/${projectId}/writing/${chapter.id}`, { replace: true });
     if (projectId) {
       api.listVersions(projectId, chapter.id).then(setVersions).catch(() => undefined);
-      api.wikiCount(projectId).then((r) => setWikiPageCount(r.count)).catch(() => undefined);
+      api.wikiCount(projectId).then((result) => setWikiPageCount(result.count)).catch(() => undefined);
     }
   };
 
   useEffect(() => {
-    if (!selectedChapter && chapters.length > 0) {
-      loadChapter(chapters[0]);
+    if (effectiveSelected && (!selectedChapter || selectedChapter.id !== effectiveSelected.id || draft !== effectiveSelected.draft)) {
+      setSelectedChapter(effectiveSelected);
+      setDraft(effectiveSelected.draft ?? '');
+      if (projectId) {
+        api.listVersions(projectId, effectiveSelected.id).then(setVersions).catch(() => undefined);
+        api.wikiCount(projectId).then((result) => setWikiPageCount(result.count)).catch(() => undefined);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapters]);
+  }, [effectiveSelected?.id, chapters]);
 
   const onDraftChange = (value: string) => {
     setDraft(value);
@@ -40,10 +58,34 @@ export function Writing() {
     }
   };
 
-  const generateDraft = async (payload: { prompt: string; tone: string; style: string; length: string; viewpoint: string; selectedText: string; mode: 'draft' | 'continue' | 'revise'; emotionalIntent?: string; workflow?: string }) => {
+  const createChapter = async () => {
+    if (!projectId) return;
+    const nextNumber = chapters.reduce((max, chapter) => Math.max(max, chapter.chapter_number), 0) + 1;
+    const created = await api.createChapter(projectId, {
+      chapter_number: nextNumber,
+      title: `第 ${nextNumber} 章`,
+      brief: '',
+      draft: '',
+    });
+    await reload();
+    setSelectedChapter(created);
+    setDraft('');
+    navigate(`/projects/${projectId}/writing/${created.id}`, { replace: true });
+    setLog(`已创建第 ${nextNumber} 章`);
+  };
+
+  const deleteChapter = async (chapter: Chapter) => {
+    if (!projectId) return;
+    await api.deleteChapter(projectId, chapter.id);
+    setSelectedChapter(null);
+    await reload();
+    setLog(`已删除第 ${chapter.chapter_number} 章`);
+  };
+
+  const generateDraft = async (payload: { prompt: string; tone: string; style: string; length: string; viewpoint: string; selectedText: string; emotionalIntent?: string; workflow?: string; mode: 'draft' | 'continue' | 'revise' }) => {
     if (!projectId || !effectiveSelected) return '请先选择章节。';
     const workflow = payload.workflow || (payload.mode === 'revise' ? 'revise_selection' : 'generate_chapter_draft');
-    setLog('正在生成本章正文…');
+    setLog('正在生成…');
     try {
       const result = await api.runAi(projectId, workflow, {
         chapter_id: effectiveSelected.id,
@@ -65,7 +107,7 @@ export function Writing() {
         emotional_intent: payload.emotionalIntent ?? '',
         mode: payload.mode,
       });
-      setLog(result.status === 'fallback' ? '模型已回退到本地占位结果' : '模型已返回正文结果');
+      setLog(result.status === 'local' ? '本地占位结果（未配置模型）' : '模型已返回正文结果');
       return result.text;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'AI 生成失败';
@@ -77,49 +119,90 @@ export function Writing() {
   const saveAsVersion = async (title: string, content: string) => {
     if (!projectId || !effectiveSelected) return;
     await api.createVersion(projectId, effectiveSelected.id, title, content);
+    setVersions(await api.listVersions(projectId, effectiveSelected.id));
     setLog('已保存为候选版本。');
+  };
+
+  const selectVersion = async (versionId: string) => {
+    if (!projectId || !effectiveSelected) return;
+    const version = versions.find((item) => item.id === versionId);
+    if (!version) return;
+    const updated = await api.selectVersion(projectId, effectiveSelected.id, versionId);
+    setDraft(updated.draft ?? version.content);
+    setSelectedChapter({ ...effectiveSelected, draft: updated.draft ?? version.content, selected_version_id: versionId });
+    setLog('已切换到该版本。');
   };
 
   const scoreChapter = async () => {
     if (!projectId || !effectiveSelected) return;
     setLog('正在评分…');
-    await api.runAi(projectId, 'score_chapter', { chapter_id: effectiveSelected.id, chapter_number: effectiveSelected.chapter_number, chapter_title: effectiveSelected.title, draft });
+    await api.runAi(projectId, 'score_chapter', {
+      chapter_id: effectiveSelected.id,
+      chapter_number: effectiveSelected.chapter_number,
+      chapter_title: effectiveSelected.title,
+      draft,
+    });
     setLog('评分完成。');
   };
 
-  const wordCount = useMemo(() => draft.trim().length, [draft]);
-
-  if (loading) return <div className="os-empty">加载中…</div>;
+  const wordCount = draft.trim().length;
 
   return (
-    <NovelEditorPage
-      project={project}
-      chapters={chapters}
-      selectedChapter={effectiveSelected}
-      versions={versions}
-      draft={draft}
-      log={log}
-      modelLabel="AI Model"
-      wikiPageCount={wikiPageCount}
-      onCreateChapter={() => undefined}
-      onDeleteChapter={() => undefined}
-      onSelectChapter={loadChapter}
-      onDraftChange={onDraftChange}
-      onChapterTitleChange={(title) => {
-        if (effectiveSelected && projectId) {
-          api.updateChapter(projectId, effectiveSelected.id, { title }).catch(() => undefined);
-          setSelectedChapter({ ...effectiveSelected, title });
-        }
-      }}
-      onSaveChapter={() => setLog('已保存 (Saved)')}
-      onGenerateVariant={() => undefined}
-      onGenerateChapterDraft={generateDraft}
-      onSaveAiResultAsVersion={saveAsVersion}
-      onScoreChapter={() => void scoreChapter()}
-      onFinalizeChapter={() => setLog('已定稿')}
-      onSelectVersion={() => undefined}
-      onOpenResource={() => undefined}
-      onLog={setLog}
-    />
+    <>
+      {immersive && (
+        <button className="immersive-exit" onClick={() => setImmersive(false)} aria-label="退出沉浸模式">
+          <Minimize2 size={13} /> 退出沉浸 · Esc
+        </button>
+      )}
+      <NovelEditorPage
+        project={project}
+        chapters={chapters}
+        selectedChapter={effectiveSelected}
+        versions={versions}
+        draft={draft}
+        log={log}
+        modelLabel="草稿自动保存"
+        wikiPageCount={wikiPageCount}
+        immersive={immersive}
+        onToggleImmersive={() => setImmersive(!immersive)}
+        onCreateChapter={() => void createChapter()}
+        onDeleteChapter={(chapter) => void deleteChapter(chapter)}
+        onSelectChapter={loadChapter}
+        onDraftChange={onDraftChange}
+        onChapterTitleChange={(title) => {
+          if (effectiveSelected && projectId) {
+            api.updateChapter(projectId, effectiveSelected.id, { title }).catch(() => undefined);
+            setSelectedChapter({ ...effectiveSelected, title });
+          }
+        }}
+        onSaveChapter={() => {
+          if (effectiveSelected && projectId) {
+            api.updateChapter(projectId, effectiveSelected.id, { draft }).catch(() => undefined);
+          }
+          setLog('已保存');
+        }}
+        onGenerateVariant={() => setLog('在右侧选择生成动作创建候选版本。')}
+        onGenerateChapterDraft={generateDraft}
+        onSaveAiResultAsVersion={saveAsVersion}
+        onScoreChapter={() => void scoreChapter()}
+        onFinalizeChapter={() => {
+          if (effectiveSelected && projectId) {
+            void api
+              .finalizeChapter(projectId, effectiveSelected.id)
+              .then(async () => {
+                await reload();
+                setLog('本章已定稿，并触发记忆编译。');
+              })
+              .catch((error) => setLog(error instanceof Error ? error.message : '定稿失败'));
+          }
+        }}
+        onSelectVersion={(versionId) => void selectVersion(versionId)}
+        onOpenResource={(resource) => {
+          const target = resource === 'characters' ? 'characters' : resource === 'outline' ? 'outline' : 'world';
+          navigate(`/projects/${projectId}/${target}`);
+        }}
+        onLog={setLog}
+      />
+    </>
   );
 }

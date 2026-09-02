@@ -1,4 +1,4 @@
-import { ReactNode, SyntheticEvent, useMemo, useState } from 'react';
+import { ReactNode, SyntheticEvent, useEffect, useMemo, useState } from 'react';
 import {
   BookMarked,
   BookOpen,
@@ -12,6 +12,8 @@ import {
   GitBranch,
   History,
   Library,
+  Maximize2,
+  Minimize2,
   PenLine,
   Plus,
   RefreshCw,
@@ -129,6 +131,8 @@ type NovelEditorPageProps = {
   log: string;
   modelLabel: string;
   wikiPageCount: number;
+  immersive?: boolean;
+  onToggleImmersive?: () => void;
   onCreateChapter: () => void;
   onDeleteChapter: (chapter: Chapter) => void;
   onSelectChapter: (chapter: Chapter) => void;
@@ -157,6 +161,8 @@ export function NovelEditorPage({
   log,
   modelLabel,
   wikiPageCount,
+  immersive = false,
+  onToggleImmersive,
   onCreateChapter,
   onDeleteChapter,
   onSelectChapter,
@@ -173,8 +179,8 @@ export function NovelEditorPage({
   onOpenResource,
   onLog,
 }: NovelEditorPageProps) {
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(immersive);
+  const [rightCollapsed, setRightCollapsed] = useState(immersive);
   const [chapterOrder, setChapterOrder] = useState<'asc' | 'desc'>('asc');
   const [chapterSearch, setChapterSearch] = useState('');
   const [selectedRange, setSelectedRange] = useState<SelectionRange | null>(null);
@@ -193,6 +199,13 @@ export function NovelEditorPage({
     },
   ]);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    if (immersive) {
+      setLeftCollapsed(true);
+      setRightCollapsed(true);
+    }
+  }, [immersive]);
 
   const wordCount = draft.trim().length;
   const readMinutes = Math.max(1, Math.ceil(wordCount / 500));
@@ -340,6 +353,8 @@ export function NovelEditorPage({
             project={project}
             selectedChapter={selectedChapter}
             wordCount={wordCount}
+            immersive={immersive}
+            onToggleImmersive={onToggleImmersive}
             onTitleChange={onChapterTitleChange}
             onSave={onSaveChapter}
             onExport={onFinalizeChapter}
@@ -415,8 +430,8 @@ function EditorLayout({
 }) {
   const className = [
     'novel-editor-page',
-    leftCollapsed ? 'left-collapsed' : '',
-    rightCollapsed ? 'right-collapsed' : '',
+    leftCollapsed ? '' : 'has-left',
+    rightCollapsed ? '' : 'has-right',
   ].join(' ');
   return <section className={className}>{children}</section>;
 }
@@ -594,6 +609,8 @@ function EditorHeader({
   project,
   selectedChapter,
   wordCount,
+  immersive,
+  onToggleImmersive,
   onTitleChange,
   onSave,
   onExport,
@@ -602,6 +619,8 @@ function EditorHeader({
   project: Project | null;
   selectedChapter: Chapter | null;
   wordCount: number;
+  immersive?: boolean;
+  onToggleImmersive?: () => void;
   onTitleChange: (title: string) => void;
   onSave: () => void;
   onExport: () => void;
@@ -610,7 +629,7 @@ function EditorHeader({
   return (
     <header className="editor-header">
       <div>
-        <span className="eyebrow">沉浸式小说创作空间</span>
+        <span className="eyebrow">{immersive ? '沉浸写作' : '写作 · 自动保存'}</span>
         <input
           className="editor-title-input"
           value={selectedChapter?.title ?? ''}
@@ -618,16 +637,22 @@ function EditorHeader({
           placeholder="请选择章节或输入章节标题"
           disabled={!selectedChapter}
         />
-        <p>{project?.title ?? '未选择作品'} · 已自动保存 · {wordCount} 字</p>
+        <p>{project?.title ?? '未选择作品'} · {wordCount} 字</p>
       </div>
       <div className="editor-header-actions">
+        {onToggleImmersive && (
+          <button className="toolbar-button" onClick={onToggleImmersive} title={immersive ? '退出沉浸模式 (Esc)' : '进入沉浸模式'}>
+            {immersive ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            <span className="toolbar-tip">{immersive ? '退出沉浸' : '沉浸'}</span>
+          </button>
+        )}
         <button className="toolbar-button primary-toolbar" onClick={onSave} disabled={!selectedChapter} title="保存正文 (Cmd+S)">
           <Save size={15} />
           <span>保存</span>
         </button>
-        <button className="toolbar-button" onClick={onExport} disabled={!selectedChapter} title="发布 / 导出">
+        <button className="toolbar-button" onClick={onExport} disabled={!selectedChapter} title="定稿 / 导出">
           <FileDown size={16} />
-          <span className="toolbar-tip">导出</span>
+          <span className="toolbar-tip">定稿</span>
         </button>
         <button className="toolbar-button" onClick={onScore} disabled={!selectedChapter} title="检查逻辑与评分">
           <Check size={16} />

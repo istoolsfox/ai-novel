@@ -114,24 +114,25 @@ Consistency Center：Overall Health + 分类问题列表（Characters/Timeline/W
 
 ⌘K Command Palette · ⌘B Sidebar · ⌘J AI Panel · ⌘S Save · ⌘Enter AI Generate · ⌘Shift P Polish · ⌘Shift R Rewrite · ⌘Shift C Continue · Esc Drawer · ↑/↓ Chapter nav。
 
-## 23. Design System
+## 23. Design System（墨纸 Ink & Paper · 已实施）
 
-- Typography：Inter/SF Pro/Geist；Body 14 / Small 12 / Heading 20 / Page Title 28
-- Spacing：4 8 12 16 20 24 32 48
-- Radius：6 8 10（勿大圆角）
-- Border：1px solid rgba(...) 极淡
-- Shadow：尽量少
+- 字体：标题衬线（Songti SC / Noto Serif SC / Georgia）；正文 UI 无衬线（PingFang SC / system-ui）
+- 字号：Body 14 / Small 12.5 / 页标题 27（衬线）/ 卡片题 14
+- Spacing：页面内边距 40/48，卡片内边距 22，卡片间距 16，区块间距 32
+- Radius：6（控件）/ 10（弹层）/ 14（卡片）
+- Border：1px 发丝线 #E7E2D5；阴影极轻，仅弹层用大阴影
+- AI 内容视觉：统一紫 #6D5ACD（AI 按钮 / AI Generated 左边线 / AI 徽标）
 
-## 24. Color System
+## 24. Color System（tokens 见 frontend/src/styles/theme.css）
 
 ```text
-Background  #FAFAFA
-Surface     #FFFFFF
-Border      #E5E5E5
-Primary     #18181B
-Secondary   #71717A
-Muted       #A1A1AA
-AI Accent   单紫色（仅 AI 按钮/AI 状态/AI 生成内容）
+--paper   #F6F4EF  页面底（暖纸）
+--surface #FFFDF9  卡片
+--ink     #232019  主墨 / #5F594D 次墨 / #9A937F 弱墨
+--line    #E7E2D5  发丝线
+--accent  #B4432C  朱砂（主按钮 / 激活态 / 关键强调）
+--ai      #6D5ACD  AI 紫（仅 AI 相关元素）
+--ok      #4A7C59 / --warn #A8742A / --danger #A8321F
 ```
 
 ## 25. AI 内容视觉区分

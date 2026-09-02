@@ -1,83 +1,136 @@
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Sparkles, Users, Globe, Map, TriangleAlert, CheckCircle2, ArrowLeft } from 'lucide-react';
-import { useChapters, useProject } from '../shell/useProject';
+import { Compass, Feather, Globe, Network, Pencil, Sparkles, Users } from 'lucide-react';
+import { api } from '../api';
+import { useChapters } from '../shell/useProject';
+import { useWorkspace } from '../shell/workspace';
+import { EmptyState, PageHeader } from '../ui/basics';
+import { ProjectsManagerModal } from '../components/ProjectsManagerModal';
 
 export function ProjectOverview() {
-  const { projectId } = useParams();
   const navigate = useNavigate();
-  const { project } = useProject(projectId);
+  const { projectId } = useParams();
+  const { project } = useWorkspace();
   const { chapters } = useChapters(projectId);
-  const total = project?.target_chapter_count ?? 0;
-  const pct = total ? Math.min(100, Math.round((chapters.length / total) * 100)) : 0;
+  const [counts, setCounts] = useState({ characters: 0, worlds: 0, relationships: 0 });
+  const [managing, setManaging] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let alive = true;
+    Promise.all([
+      api.listRecords(projectId, 'character-profiles').catch(() => []),
+      api.listRecords(projectId, 'world-settings').catch(() => []),
+      api.listRecords(projectId, 'character-relationships').catch(() => []),
+    ]).then(([characters, worlds, relationships]) => {
+      if (alive) setCounts({ characters: characters.length, worlds: worlds.length, relationships: relationships.length });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [projectId]);
+
+  const totalWords = chapters.reduce((sum, chapter) => sum + (chapter.draft?.length ?? 0), 0);
+  const finalized = chapters.filter((chapter) => chapter.status === 'final').length;
+  const target = project?.target_chapter_count ?? 0;
+  const pct = target ? Math.min(100, Math.round((chapters.length / target) * 100)) : 0;
+
+  const metrics = [
+    { icon: Users, label: '人物', value: counts.characters, to: 'characters' },
+    { icon: Globe, label: '世界观', value: counts.worlds, to: 'world' },
+    { icon: Network, label: '关系', value: counts.relationships, to: 'relations' },
+    { icon: Feather, label: '章节', value: chapters.length, to: 'writing' },
+  ];
+
+  if (!project) {
+    return (
+      <div className="page-inner">
+        <EmptyState icon={<Compass size={26} />} title="项目不存在或已删除" hint="请从项目库重新选择。" />
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <button className="os-btn os-btn-ghost" onClick={() => navigate('/projects')} style={{ marginBottom: '1rem' }}>
-        <ArrowLeft size={15} /> Projects
-      </button>
-      <h1>{project?.title ?? '未命名项目'}</h1>
-      <p className="os-page-sub">{project?.genre || 'Novel'} · {project?.topic || ''}</p>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-        <button className="os-btn os-btn-primary" onClick={() => navigate(`/projects/${projectId}/writing`)}>Continue Writing</button>
-        <button className="os-btn" onClick={() => navigate(`/projects/${projectId}/ai`)}>AI Create</button>
+    <div className="page-inner">
+      <PageHeader
+        title={project.title}
+        sub={[project.genre || '未设类型', project.topic].filter(Boolean).join(' · ') || '还没有核心创意'}
+        actions={
+          <>
+            <button className="btn" onClick={() => setManaging(true)}>
+              <Pencil size={13} /> 编辑项目
+            </button>
+            <button className="btn btn-ai" onClick={() => navigate(`/projects/${projectId}/ai`)}>
+              <Sparkles size={14} /> AI 工作室
+            </button>
+            <button className="btn btn-primary" onClick={() => navigate(`/projects/${projectId}/writing`)}>
+              <Feather size={14} /> 继续写作
+            </button>
+          </>
+        }
+      />
+
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+        {metrics.map((metric) => {
+          const Icon = metric.icon;
+          return (
+            <button key={metric.label} className="card card-click" style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}
+              onClick={() => navigate(`/projects/${projectId}/${metric.to}`)}>
+              <Icon size={15} style={{ color: 'var(--accent)' }} />
+              <span className="stat-value">{metric.value}</span>
+              <span className="stat-label">{metric.label}</span>
+            </button>
+          );
+        })}
       </div>
 
-      <div className="os-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-        <section className="os-card">
-          <div className="os-card-header"><strong>Story Progress</strong><small>{pct}%</small></div>
-          <div className="os-progress" style={{ marginBottom: '0.5rem' }}><span style={{ width: `${pct}%` }} /></div>
-          <small style={{ color: 'var(--n-text-2)' }}>{chapters.length} / {total} Chapters</small>
-        </section>
-
-        <section className="os-card">
-          <div className="os-card-header"><strong>Four Metrics</strong></div>
-          <div className="os-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0.6rem' }}>
-            <div><Users size={16} /><small>Characters<br /><strong style={{ fontSize: '1.1rem' }}>12</strong></small></div>
-            <div><Globe size={16} /><small>World<br /><strong style={{ fontSize: '1.1rem' }}>34</strong></small></div>
-            <div><Map size={16} /><small>Plotlines<br /><strong style={{ fontSize: '1.1rem' }}>4</strong></small></div>
-            <div><Sparkles size={16} /><small>Foreshadowings<br /><strong style={{ fontSize: '1.1rem' }}>17</strong></small></div>
+      <div className="grid" style={{ gridTemplateColumns: '3fr 2fr', marginTop: 16 }}>
+        <section className="card">
+          <div className="card-head">
+            <b>写作进度</b>
+            <small>{chapters.length}{target ? ` / ${target}` : ''} 章 · {totalWords.toLocaleString()} 字</small>
           </div>
+          <div className="progress" style={{ marginBottom: 8 }}><span style={{ width: `${pct}%` }} /></div>
+          <p className="muted" style={{ fontSize: 12.5 }}>{target ? `完成 ${pct}%，其中 ${finalized} 章已定稿` : `已写 ${chapters.length} 章，其中 ${finalized} 章已定稿（可在管理项目中设定目标章节数）`}</p>
+        </section>
+
+        <section className="card">
+          <div className="card-head"><b>故事简介</b></div>
+          {project.synopsis ? (
+            <p style={{ fontSize: 13, lineHeight: 1.8 }}>{project.synopsis}</p>
+          ) : (
+            <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.7 }}>还没有简介。点击「编辑项目」补充梗概，AI 生成时会引用。</p>
+          )}
         </section>
       </div>
 
-      <div className="os-grid" style={{ gridTemplateColumns: '1fr 1fr', marginTop: '1rem' }}>
-        <section className="os-card">
-          <div className="os-card-header"><strong>Recent Chapters</strong></div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.84rem' }}>
-            {chapters.slice(-6).reverse().map((ch) => (
-              <div key={ch.id} style={{ alignItems: 'center', display: 'flex', gap: '0.6rem', padding: '0.3rem 0' }}>
-                <span style={{ color: 'var(--n-muted)', width: '2rem' }}>{String(ch.chapter_number).padStart(2, '0')}</span>
-                <span style={{ flex: 1 }}>{ch.title || '未命名'}</span>
-                <span className={`os-badge ${ch.status === 'final' ? 'done' : 'editing'}`}>{ch.status === 'final' ? 'Completed' : 'Editing'}</span>
-              </div>
+      <section className="section">
+        <h2 className="section-title">最近章节 <small>RECENT CHAPTERS</small></h2>
+        {chapters.length === 0 ? (
+          <EmptyState
+            title="还没有章节"
+            hint="去「大纲」创建章节，或让 AI 生成第一章。"
+            action={
+              <button className="btn btn-primary" onClick={() => navigate(`/projects/${projectId}/outline`)}>
+                前往大纲
+              </button>
+            }
+          />
+        ) : (
+          <div className="card" style={{ padding: 10 }}>
+            {[...chapters].sort((left, right) => right.chapter_number - left.chapter_number).slice(0, 6).map((chapter) => (
+              <button key={chapter.id} className="row" onClick={() => navigate(`/projects/${projectId}/writing/${chapter.id}`)}>
+                <span className="muted" style={{ width: 30, fontSize: 12 }}>{String(chapter.chapter_number).padStart(2, '0')}</span>
+                <span className="grow ellip" style={{ fontSize: 13.5 }}>{chapter.title || '未命名章'}</span>
+                <small className="muted">{(chapter.draft?.length ?? 0).toLocaleString()} 字</small>
+                <span className={chapter.status === 'final' ? 'badge ok' : 'badge'}>{chapter.status === 'final' ? '已定稿' : '草稿'}</span>
+              </button>
             ))}
-            {chapters.length === 0 && <div className="os-empty">暂无章节</div>}
           </div>
-        </section>
+        )}
+      </section>
 
-        <section className="os-card">
-          <div className="os-card-header"><strong>Story Health</strong></div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.8rem' }}>
-            <Row label="Character Consistency" value={94} />
-            <Row label="Timeline Consistency" value={98} />
-            <Row label="Plot Continuity" value={91} />
-            <Row label="Foreshadowing" value={87} />
-            <div style={{ borderTop: '1px solid var(--n-border)', display: 'flex', justifyContent: 'space-between', marginTop: '0.4rem', paddingTop: '0.5rem' }}>
-              <strong>Overall</strong><strong style={{ color: 'var(--ai-accent)' }}>93%</strong>
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: number }) {
-  return (
-    <div style={{ alignItems: 'center', display: 'flex', gap: '0.6rem' }}>
-      <span style={{ flex: 1 }}>{label}</span>
-      <div className="os-progress" style={{ flex: 1, maxWidth: '120px' }}><span style={{ width: `${value}%` }} /></div>
-      <span style={{ color: 'var(--n-text-2)', width: '2.2rem' }}>{value}%</span>
+      {managing && <ProjectsManagerModal onClose={() => setManaging(false)} />}
     </div>
   );
 }

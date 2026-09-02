@@ -1075,6 +1075,7 @@ def create_generic(project_id: str, resource: str, payload: GenericIn) -> dict[s
             ),
         )
         record = row_to_dict(conn.execute(f"SELECT * FROM {table} WHERE id = ?", (record_id,)).fetchone())
+        snapshot_record_revision(conn, project_id, resource, record, origin="create")
     sync_record_to_wiki(project_id, resource, record)
     return record
 
@@ -1106,6 +1107,7 @@ def update_generic(project_id: str, resource: str, record_id: str, payload: Gene
             ),
         )
         record = row_to_dict(conn.execute(f"SELECT * FROM {table} WHERE id = ?", (record_id,)).fetchone())
+        snapshot_record_revision(conn, project_id, resource, record, origin="update")
     sync_record_to_wiki(project_id, resource, record)
     return record
 
@@ -1121,8 +1123,107 @@ def delete_generic(project_id: str, resource: str, record_id: str) -> dict[str, 
         if not record:
             raise HTTPException(status_code=404, detail="Record not found in project")
         conn.execute(f"DELETE FROM {table} WHERE id = ? AND project_id = ?", (record_id, project_id))
+        conn.execute(
+            "DELETE FROM record_revisions WHERE project_id = ? AND resource = ? AND record_id = ?",
+            (project_id, resource, record_id),
+        )
     delete_record_from_wiki(project_id, resource, record)
     return {"ok": True}
+
+
+def snapshot_record_revision(
+    conn: Any,
+    project_id: str,
+    resource: str,
+    record: dict[str, Any] | None,
+    origin: str = "manual",
+) -> None:
+    if not record:
+        return
+    conn.execute(
+        """
+        INSERT INTO record_revisions (
+            id, project_id, resource, record_id, title, category, content, payload, status, origin, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            new_id(),
+            project_id,
+            resource,
+            record.get("id", ""),
+            record.get("title", ""),
+            record.get("category", ""),
+            record.get("content", ""),
+            json.dumps(record.get("payload") or {}, ensure_ascii=False),
+            record.get("status", "active"),
+            origin,
+            utc_now(),
+        ),
+    )
+
+
+@app.get("/api/projects/{project_id}/{resource}/{record_id}/revisions")
+def list_record_revisions(project_id: str, resource: str, record_id: str) -> list[dict[str, Any]]:
+    table = table_for_resource(resource)
+    require_project(project_id)
+    with connect() as conn:
+        record = conn.execute(f"SELECT id FROM {table} WHERE id = ? AND project_id = ?", (record_id, project_id)).fetchone()
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found in project")
+        return rows_to_dicts(
+            conn.execute(
+                """
+                SELECT * FROM record_revisions
+                WHERE project_id = ? AND resource = ? AND record_id = ?
+                ORDER BY created_at DESC, rowid DESC
+                """,
+                (project_id, resource, record_id),
+            ).fetchall()
+        )
+
+
+@app.post("/api/projects/{project_id}/{resource}/{record_id}/revisions/{revision_id}/restore")
+def restore_record_revision(project_id: str, resource: str, record_id: str, revision_id: str) -> dict[str, Any]:
+    table = table_for_resource(resource)
+    require_project(project_id)
+    now = utc_now()
+    with connect() as conn:
+        record = conn.execute(f"SELECT id FROM {table} WHERE id = ? AND project_id = ?", (record_id, project_id)).fetchone()
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found in project")
+        revision = row_to_dict(
+            conn.execute(
+                """
+                SELECT * FROM record_revisions
+                WHERE id = ? AND project_id = ? AND resource = ? AND record_id = ?
+                """,
+                (revision_id, project_id, resource, record_id),
+            ).fetchone()
+        )
+        if not revision:
+            raise HTTPException(status_code=404, detail="Revision not found")
+        conn.execute(
+            f"""
+            UPDATE {table}
+            SET title = ?, category = ?, content = ?, payload = ?, status = ?, updated_at = ?
+            WHERE id = ? AND project_id = ?
+            """,
+            (
+                revision.get("title", ""),
+                revision.get("category", ""),
+                revision.get("content", ""),
+                json.dumps(revision.get("payload") or {}, ensure_ascii=False),
+                revision.get("status", "active"),
+                now,
+                record_id,
+                project_id,
+            ),
+        )
+        restored = row_to_dict(conn.execute(f"SELECT * FROM {table} WHERE id = ?", (record_id,)).fetchone())
+        snapshot_record_revision(conn, project_id, resource, restored, origin="restore")
+    sync_record_to_wiki(project_id, resource, restored)
+    return restored
 
 
 def table_for_resource(resource: str) -> str:
@@ -1346,13 +1447,15 @@ def collect_existing_character_names(payload: AiWorkflowIn, context: dict[str, A
     return names
 
 
-def character_stub_for_payload(payload: AiWorkflowIn, context: dict[str, Any]) -> dict[str, str]:
+def character_stub_for_payload(payload: AiWorkflowIn, context: dict[str, Any]) -> list[dict[str, str]]:
     existing_names = collect_existing_character_names(payload, context)
     character = next((item for item in CHARACTER_STUBS if item["name"] not in existing_names), CHARACTER_STUBS[-1])
-    return {
-        **character,
-        "notes": f"{character['notes']} 根据提示生成：{payload.prompt or '新角色'}",
-    }
+    return [
+        {
+            **character,
+            "notes": f"{character['notes']} 根据提示生成：{payload.prompt or '新角色'}",
+        }
+    ]
 
 
 def emotional_source_text(payload: AiWorkflowIn, context: dict[str, Any]) -> str:
@@ -1387,6 +1490,51 @@ def build_emotional_rewrite(payload: AiWorkflowIn, context: dict[str, Any], anti
 def structured_output_for_workflow(workflow: str, payload: AiWorkflowIn, context: dict[str, Any]) -> Any:
     if workflow == "generate_characters":
         return character_stub_for_payload(payload, context)
+    if workflow == "generate_setting":
+        focus = payload.prompt or payload.content or "记忆古籍"
+        return [
+            {
+                "name": f"{focus}发生地 · 灰塔旧城区",
+                "category": "Locations",
+                "description": "层层叠叠的档案楼阁，雨水顺着玻璃连廊流进下城的旧书市。",
+            },
+            {
+                "name": "守夜人议会",
+                "category": "Organizations",
+                "description": "管理禁书流通的松散联盟，表面中立，实则各自押注不同的继承者。",
+            },
+            {
+                "name": "记忆改写法则",
+                "category": "Rules",
+                "description": "改写他人记忆的人，会失去一段自己无法指定的记忆作为代价。",
+            },
+            {
+                "name": "缺角借阅卡",
+                "category": "Objects",
+                "description": "能在古籍馆里替持有人保留一小时真记忆的通行凭证。",
+            },
+        ]
+    if workflow == "extract_relationships":
+        protagonist = primary_character_name(context)
+        counterpart = next(
+            (
+                str((record.get("payload") or {}).get("name") or record.get("title"))
+                for record in (context.get("characters") or [])[1:]
+                if isinstance(record, dict)
+            ),
+            "顾临舟",
+        )
+        return [
+            {
+                "source_character": protagonist,
+                "target_character": counterpart,
+                "relationship_type": "盟友",
+                "strength": 62,
+                "conflict": "各自保留了一条不与对方共享的线索。",
+                "change_history": "由纯粹交换情报，转为在关键章节互相托付退路。",
+                "related_chapters": "",
+            }
+        ]
     if workflow == "generate_emotion_seed":
         protagonist = primary_character_name(context)
         source = emotional_source_text(payload, context)
@@ -1696,14 +1844,14 @@ def system_prompt_for_workflow(workflow: str) -> str:
 def run_model_or_stub(project_id: str, workflow: str, payload: AiWorkflowIn, context: dict[str, Any]) -> dict[str, Any]:
     config = resolve_model_config(project_id, workflow)
     if not config:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"未找到可用于 {workflow} 的远程模型配置。"
-                "请在设置中保存 DeepSeek、MiniMax/Mimo 或其他 OpenAI-compatible 模型并设为默认，"
-                "或在任务路由中为该任务选择模型。"
-            ),
+        output = build_stub_ai_output(
+            workflow,
+            payload,
+            context,
+            error="未配置远程模型，已返回本地占位内容。保存模型配置后将调用真实大模型。",
         )
+        output["status"] = "local"
+        return output
 
     config_payload = config.get("payload") if isinstance(config.get("payload"), dict) else {}
     provider = str(config_payload.get("provider") or config.get("category") or "")

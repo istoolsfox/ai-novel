@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
 import '@xyflow/react/dist/style.css';
-import './styles.css';
+import './styles/theme.css';
 import { router } from './router';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

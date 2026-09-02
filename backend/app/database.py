@@ -136,6 +136,20 @@ def init_db() -> None:
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS record_revisions (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                resource TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                title TEXT DEFAULT '',
+                category TEXT DEFAULT '',
+                content TEXT DEFAULT '',
+                payload TEXT DEFAULT '{}',
+                status TEXT DEFAULT 'active',
+                origin TEXT DEFAULT 'manual',
+                created_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS ai_runs (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
@@ -312,6 +326,9 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_character_knowledge_project_character
             ON character_knowledge(project_id, character_key, fact_key, source_chapter_number);
 
+            CREATE INDEX IF NOT EXISTS idx_record_revisions_record
+            ON record_revisions(project_id, resource, record_id, created_at);
+
             CREATE TRIGGER IF NOT EXISTS cleanup_chapter_continuity
             AFTER DELETE ON chapters
             BEGIN
@@ -320,6 +337,12 @@ def init_db() -> None:
                 DELETE FROM continuity_checks WHERE chapter_id = OLD.id;
                 DELETE FROM character_states WHERE chapter_id = OLD.id;
                 DELETE FROM character_knowledge WHERE source_chapter_id = OLD.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS cleanup_project_record_revisions
+            AFTER DELETE ON projects
+            BEGIN
+                DELETE FROM record_revisions WHERE project_id = OLD.id;
             END;
 
             CREATE TRIGGER IF NOT EXISTS cleanup_project_continuity

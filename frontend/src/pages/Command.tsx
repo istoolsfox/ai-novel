@@ -1,39 +1,53 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, FileText, Users, Map, Sparkles, FolderOpen, LoaderCircle } from 'lucide-react';
-
-const COMMANDS = [
-  { label: 'Create Character', icon: Users, to: '/projects/:id/characters' },
-  { label: 'Generate Outline', icon: Map, to: '/projects/:id/outline' },
-  { label: 'Continue Writing', icon: FileText, to: '/projects/:id/writing' },
-  { label: 'Open AI Studio', icon: Sparkles, to: '/projects/:id/ai' },
-  { label: 'Open Projects', icon: FolderOpen, to: '/projects' },
-];
+import { Compass, Feather, Globe, Map, Search, Sparkles, Users } from 'lucide-react';
+import { useWorkspace } from '../shell/workspace';
+import { PageHeader } from '../ui/basics';
 
 export function CommandPage() {
   const navigate = useNavigate();
-  const [q, setQ] = useState('');
-  const filtered = COMMANDS.filter((c) => c.label.toLowerCase().includes(q.toLowerCase()));
+  const { projectId, project } = useWorkspace();
+  const [query, setQuery] = useState('');
+
+  const base = projectId ? `/projects/${projectId}` : '/projects';
+  const commands = [
+    { label: '进入写作', hint: '打开章节编辑器', icon: Feather, to: `${base}/writing` },
+    { label: 'AI 工作室', hint: '生成人物 / 世界观 / 大纲', icon: Sparkles, to: `${base}/ai` },
+    { label: '人物', hint: '管理角色档案', icon: Users, to: `${base}/characters` },
+    { label: '世界观', hint: '地点 / 组织 / 规则', icon: Globe, to: `${base}/world` },
+    { label: '大纲', hint: '章节板', icon: Map, to: `${base}/outline` },
+    { label: '项目库', hint: '切换与管理项目', icon: Compass, to: '/projects' },
+  ];
+  const filtered = commands.filter((command) => `${command.label}${command.hint}`.toLowerCase().includes(query.toLowerCase()));
+
   return (
-    <div>
-      <h1>Command</h1>
-      <p className="os-page-sub">全局命令面板</p>
-      <div className="os-card" style={{ maxWidth: '520px' }}>
-        <div className="os-topbar-search" style={{ marginBottom: '0.75rem' }}>
-          <Search size={14} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索或执行命令…" autoFocus style={{ border: 'none', flex: 1, outline: 'none' }} />
-          <kbd>⌘K</kbd>
-        </div>
-        <div className="os-ai-actions">
-          {filtered.map((c) => {
-            const Icon = c.icon;
-            return (
-              <button key={c.label} className="os-ai-action" onClick={() => navigate('/projects/demo/overview')}>
-                <Icon size={14} /> {c.label}
-              </button>
-            );
-          })}
-        </div>
+    <div className="page-inner" style={{ maxWidth: 640 }}>
+      <PageHeader title="命令" sub={project ? `当前项目：${project.title}` : '快速跳转到任意工作区'} />
+      <div className="topbar-search" style={{ width: '100%', cursor: 'text', padding: '10px 14px' }}>
+        <Search size={14} />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="输入命令名…"
+          autoFocus
+          style={{ border: 'none', padding: 0, background: 'transparent' }}
+        />
+        <kbd>⌘K</kbd>
+      </div>
+      <div className="card" style={{ marginTop: 12, padding: 8 }}>
+        {filtered.map((command) => {
+          const Icon = command.icon;
+          return (
+            <button key={command.label} className="row" onClick={() => navigate(command.to)}>
+              <Icon size={15} style={{ color: 'var(--accent)' }} />
+              <span className="grow">
+                <b style={{ display: 'block' }}>{command.label}</b>
+                <small>{command.hint}</small>
+              </span>
+            </button>
+          );
+        })}
+        {filtered.length === 0 && <p className="muted" style={{ padding: 14 }}>没有匹配的命令</p>}
       </div>
     </div>
   );

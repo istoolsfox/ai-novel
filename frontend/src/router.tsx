@@ -15,10 +15,6 @@ import { AIStudio } from './pages/AIStudio';
 import { CommandPage } from './pages/Command';
 import { Placeholder } from './pages/Placeholder';
 
-function ProjectOutlet() {
-  return <Placeholder title="Project" desc="正在进行。" />;
-}
-
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -27,7 +23,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <Dashboard /> },
       { path: 'projects', element: <Projects /> },
-      { path: 'projects/new', element: <Placeholder title="New Project" desc="创建向导将在后续实现。" /> },
+      { path: 'projects/new', element: <Navigate to="/projects" replace /> },
       {
         path: 'projects/:projectId',
         children: [
@@ -43,12 +39,12 @@ export const router = createBrowserRouter([
           { path: 'writing/:chapterId', element: <Writing /> },
           { path: 'ai', element: <AIStudio /> },
           { path: 'consistency', element: <Consistency /> },
-          { path: 'assets', element: <Placeholder title="Assets" desc="素材库。" /> },
-          { path: 'analytics', element: <Placeholder title="Analytics" desc="创作分析。" /> },
+          { path: 'assets', element: <Placeholder title="素材库" desc="灵感、素材与知识库将在后续阶段上线。" /> },
+          { path: 'analytics', element: <Placeholder title="创作分析" desc="产出与质量分析将在后续阶段上线。" /> },
         ],
       },
       { path: 'command', element: <CommandPage /> },
-      { path: 'settings', element: <Placeholder title="Settings" desc="设置中心。" /> },
+      { path: 'settings', element: <Placeholder title="设置" desc="模型配置、安全与备份管理可通过 API 访问，图形界面将在后续阶段上线。" /> },
     ],
   },
 ]);
