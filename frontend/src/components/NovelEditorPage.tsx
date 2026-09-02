@@ -460,7 +460,6 @@ function NovelSidebar({
           <div className="novel-sidebar-head">
             <span>Novel Editor</span>
             <h3>{project?.title ?? '未选择小说'}</h3>
-            <small>连载中 / 本地优先 / 私有工作室</small>
           </div>
           <div className="novel-search">
             <Search size={15} />
@@ -720,7 +719,7 @@ function WritingStatusBar({
       <span>今日新增 {todayWords} 字</span>
       <span>AI 修改 {aiEditCount} 次</span>
       <span>完成度 {completion}%</span>
-      <strong>{log}</strong>
+      {log && <strong>{log}</strong>}
     </footer>
   );
 }

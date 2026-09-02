@@ -200,7 +200,7 @@ export default function App() {
   const [wikiPages, setWikiPages] = useState<Array<{ path: string; content: string }>>([]);
   const [wikiPageCount, setWikiPageCount] = useState(0);
   const [activeTab, setActiveTab] = useState<TabKey>('chapters');
-  const [log, setLog] = useState('准备就绪');
+  const [log, setLog] = useState('');
   const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>({
     state: 'idle',
     title: '准备就绪',
@@ -1847,14 +1847,20 @@ export default function App() {
         <nav className="rail-nav">
           {tabs.map((tab) => {
             const Icon = tab.icon;
+            const handleClick = () => {
+              if (tab.key === 'chapters') {
+                setSelectedChapter(null);
+              }
+              setActiveTab(tab.key);
+            };
             return (
               <button
                 className={activeTab === tab.key ? 'active' : ''}
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                title={`${tab.label}：${tab.description}`}
+                onClick={handleClick}
+                title={tab.label}
               >
-                <Icon size={18} />
+                <Icon size={17} />
                 <span>{tab.label}</span>
                 <small>{tab.description}</small>
               </button>
@@ -1862,78 +1868,60 @@ export default function App() {
           })}
         </nav>
         <div className="rail-footer">
-          <div className={`nav-execution ${executionStatus.state}`} role="status" aria-live="polite">
-            {executionStatus.state === 'running' ? (
-              <LoaderCircle className="execution-spinner" size={15} />
-            ) : executionStatus.state === 'error' ? (
-              <ShieldAlert size={15} />
-            ) : (
-              <CheckCircle2 size={15} />
-            )}
-          </div>
+          <div className="header-actions" id="app-header-actions"></div>
         </div>
       </aside>
 
       <aside className="sidebar">
-        <div className="brand">
-          <div>
-            <h1>AI 小说创作平台</h1>
-            <p>本地优先 / 长篇记忆 / 项目隔离</p>
-          </div>
-        </div>
-
-        <div className="create-project">
+        <div className="project-panel">
           <div className="section-title">
             <span>项目库</span>
             <small>{projects.length} 本小说</small>
           </div>
-          <input value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} aria-label="项目标题" placeholder="新项目名称" />
-          <button className="primary-action" onClick={() => void createProject()}>
-            <Plus size={16} />
-            新建项目
-          </button>
-        </div>
-
-        <div className="project-list">
-          {projects.map((project) => {
-            const projectChapters = project.id === selectedProject?.id ? chapters.length : 0;
-            return (
-              <article className={project.id === selectedProject?.id ? 'project-card selected' : 'project-card'} key={project.id}>
-                <button
-                  className={project.id === selectedProject?.id ? 'selected' : ''}
-                  onClick={() => setSelectedProject(project)}
-                >
-                  <span className="project-title-row">
-                    <strong>{project.title}</strong>
-                    {project.id === selectedProject?.id && <span className="project-dot" />}
-                  </span>
-                  <span className="project-meta">{project.genre || '本地项目'} · {projectChapters}/{project.target_chapter_count || 0} 章</span>
-                </button>
-                <button
-                  className="danger-link"
-                  onClick={() => {
-                    setDeleteProjectTarget(project);
-                    setDeleteProjectPassword('');
-                  }}
-                >
-                  <Trash2 size={14} />
-                  删除
-                </button>
-              </article>
-            );
-          })}
-          {projects.length === 0 && (
-            <div className="empty-project">
-              <strong>创建第一本小说</strong>
-              <span>后续章节、记忆、导出都会自动归属这里选中的项目。</span>
-            </div>
-          )}
+          <div className="project-create-row">
+            <input value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} aria-label="项目标题" placeholder="新项目名称" />
+            <button className="icon-action" onClick={() => void createProject()} title="新建项目" aria-label="新建项目">
+              <Plus size={16} />
+            </button>
+          </div>
+          <div className="project-list">
+            {projects.map((project) => {
+              const selected = project.id === selectedProject?.id;
+              return (
+                <article className={selected ? 'project-card selected' : 'project-card'} key={project.id}>
+                  <button className={selected ? 'selected' : ''} onClick={() => setSelectedProject(project)}>
+                    <span className="project-title-row">
+                      <strong>{project.title}</strong>
+                      {selected && <span className="project-dot" />}
+                    </span>
+                    <span className="project-meta">{project.genre || '本地项目'} · {selected ? `${chapters.length}/${project.target_chapter_count || 0}` : `${project.target_chapter_count || 0} 章`}</span>
+                  </button>
+                  <button
+                    className="project-delete"
+                    onClick={() => {
+                      setDeleteProjectTarget(project);
+                      setDeleteProjectPassword('');
+                    }}
+                     title="删除项目"
+                     aria-label="删除项目"
+                   >
+                     <Trash2 size={14} />
+                   </button>
+                </article>
+              );
+            })}
+            {projects.length === 0 && (
+              <div className="empty-project">
+                <strong>创建第一本小说</strong>
+              </div>
+            )}
+          </div>
         </div>
 
         {deleteProjectTarget && (
           <div className="delete-project-panel">
             <strong>删除项目：{deleteProjectTarget.title}</strong>
-            <p>删除后会移出项目库。请输入删除密码；如果未配置环境变量，请输入项目名称。</p>
+            <p>请输入删除密码；如果未配置环境变量，请输入项目名称。</p>
             <input
               aria-label="删除项目密码"
               type="password"
@@ -1955,15 +1943,20 @@ export default function App() {
           </div>
         )}
 
-        <div className="sidebar-tools">
-          <div className="header-actions" id="app-header-actions"></div>
-        </div>
+        <div className="sidebar-divider" />
+        <TabContextPanel
+          activeTab={activeTab}
+          project={selectedProject}
+          chaptersCount={chapters.length}
+          recordsCount={records.length}
+          wikiPageCount={wikiPageCount}
+        />
       </aside>
 
       <main className={isWritingTab ? 'workspace writing-workspace' : 'workspace'}>
         <header className="workspace-topbar">
           <div className="workspace-title">
-            <span className="eyebrow">写作工作台</span>
+            <span className="workspace-brand">AI 小说创作平台</span>
             <strong>{selectedProject?.title ?? '还没有项目'}</strong>
             {selectedChapter && (
               <span className="workspace-context">第 {selectedChapter.chapter_number} 章 · {displayChapterTitle(selectedChapter)}</span>
@@ -1974,27 +1967,14 @@ export default function App() {
               <Search size={14} />
               搜索或执行命令 <kbd>⌘K</kbd>
             </button>
-            <span className="workspace-status">{executionLabel}</span>
+            {executionStatus.state !== 'idle' && (
+              <span className={`workspace-execution ${executionStatus.state}`} role="status" aria-live="polite">
+                {executionStatus.state === 'running' && <LoaderCircle className="execution-spinner" size={14} />}
+                {executionLabel}
+              </span>
+            )}
           </div>
         </header>
-
-        <div className="workspace-stats">
-          <div className="workspace-stat">
-            <span>章节</span>
-            <strong>{chapters.length}</strong>
-            <small>/{selectedProject?.target_chapter_count ?? '—'} 章计划</small>
-          </div>
-          <div className="workspace-stat">
-            <span>llmwiki 记忆</span>
-            <strong>{wikiPageCount}</strong>
-            <small>个页面</small>
-          </div>
-          <div className="workspace-stat">
-            <span>模型</span>
-            <strong className="stat-text">{modelLabel(modelForWorkflow('generate_chapter_draft'))}</strong>
-            <small>用于正文生成</small>
-          </div>
-        </div>
 
         {activeTab === 'chapters' && (
           <NovelEditorPage
@@ -2331,6 +2311,49 @@ function CommandPalette({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TabContextPanel({
+  activeTab,
+  project,
+  chaptersCount,
+  recordsCount,
+  wikiPageCount,
+}: {
+  activeTab: TabKey;
+  project: Project | null;
+  chaptersCount: number;
+  recordsCount: number;
+  wikiPageCount: number;
+}) {
+  const titleMap: Record<string, string> = {
+    chapters: '本章',
+    outline: '大纲',
+    characters: '角色',
+    graph: '关系',
+    timeline: '时间线',
+    foreshadowing: '伏笔',
+    style: '风格',
+    taboo: '雷点',
+    knowledge: '资料',
+    wiki: '记忆',
+    export: '导出',
+  };
+  const metric =
+    activeTab === 'chapters'
+      ? `章节：${chaptersCount}`
+      : ['outline', 'characters', 'graph', 'timeline', 'foreshadowing', 'taboo', 'knowledge'].includes(activeTab)
+        ? `条数：${recordsCount}`
+        : activeTab === 'wiki'
+          ? `页面：${wikiPageCount}`
+          : null;
+  return (
+    <div className="tab-context">
+      <span className="tab-context-title">{titleMap[activeTab] ?? ''}</span>
+      <strong>{project?.title ?? '未选择作品'}</strong>
+      {metric && <span className="tab-context-metric">{metric}</span>}
     </div>
   );
 }
