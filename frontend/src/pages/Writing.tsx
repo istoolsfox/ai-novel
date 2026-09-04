@@ -181,6 +181,7 @@ export function Writing() {
         onSaveChapter={() => {
           if (effectiveSelected && projectId) {
             api.updateChapter(projectId, effectiveSelected.id, { draft }).catch(() => undefined);
+            setSelectedChapter({ ...effectiveSelected, draft });
           }
           setLog('已保存');
         }}

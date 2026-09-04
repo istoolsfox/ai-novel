@@ -50,6 +50,15 @@ export function Characters() {
       ].filter((row) => row.value)
     : [];
 
+  // AI 落库的 content 常常只是各结构化字段的复读，过滤掉与字段重复的行，只留真正额外的信息。
+  const knownValues = new Set(detailRows.map((row) => row.value));
+  knownValues.add(str(selected?.title));
+  const extraIntro = readableContent(selected?.content)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !knownValues.has(line) && ![...knownValues].some((value) => value.includes(line) || line.includes(value)))
+    .join('\n');
+
   const saveForm = async (values: Partial<GenericRecord>) => {
     if (values.id) {
       await update(String(values.id), values);
@@ -141,9 +150,9 @@ export function Characters() {
                 </div>
               </div>
 
-              {readableContent(selected.content) && (
+              {extraIntro && (
                 <p style={{ fontSize: 13.5, lineHeight: 1.8, color: 'var(--ink-2)', marginBottom: 18, whiteSpace: 'pre-line' }}>
-                  {readableContent(selected.content)}
+                  {extraIntro}
                 </p>
               )}
 
