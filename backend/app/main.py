@@ -2239,6 +2239,12 @@ def run_model_or_stub(project_id: str, workflow: str, payload: AiWorkflowIn, con
         ],
         "temperature": float(config_payload.get("temperature") or 0.7),
     }
+    # qwen3 系等思考型模型：非流式调用必须显式关闭思考，否则思考内容会耗尽 max_tokens 导致超时。
+    enable_thinking = config_payload.get("enable_thinking")
+    if enable_thinking is not None:
+        request_body["enable_thinking"] = bool(enable_thinking)
+    elif "maas.aliyuncs.com" in base_url:
+        request_body["enable_thinking"] = False
     apply_token_limit(request_body, provider, max_tokens_for_config(config_payload))
     request = urllib.request.Request(
         f"{base_url}/chat/completions",
