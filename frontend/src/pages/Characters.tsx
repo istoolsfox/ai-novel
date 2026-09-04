@@ -7,6 +7,7 @@ import { ConfirmDialog, EmptyState, PageHeader } from '../ui/basics';
 import { AIGenerateModal } from '../components/AIGenerateModal';
 import { HistoryDrawer } from '../components/HistoryDrawer';
 import { FieldDef, RecordFormModal } from '../components/RecordFormModal';
+import { readableContent } from '../utils/text';
 
 const RESOURCE = 'character-profiles';
 
@@ -140,8 +141,10 @@ export function Characters() {
                 </div>
               </div>
 
-              {str(selected.content) && (
-                <p style={{ fontSize: 13.5, lineHeight: 1.8, color: 'var(--ink-2)', marginBottom: 18 }}>{selected.content}</p>
+              {readableContent(selected.content) && (
+                <p style={{ fontSize: 13.5, lineHeight: 1.8, color: 'var(--ink-2)', marginBottom: 18, whiteSpace: 'pre-line' }}>
+                  {readableContent(selected.content)}
+                </p>
               )}
 
               {detailRows.length > 0 ? (

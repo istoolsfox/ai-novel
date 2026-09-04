@@ -7,6 +7,7 @@ import { ConfirmDialog, EmptyState, PageHeader } from '../ui/basics';
 import { AIGenerateModal } from '../components/AIGenerateModal';
 import { HistoryDrawer } from '../components/HistoryDrawer';
 import { FieldDef, RecordFormModal } from '../components/RecordFormModal';
+import { readableContent } from '../utils/text';
 
 const RESOURCE = 'world-settings';
 
@@ -114,8 +115,8 @@ export function World() {
                     <Trash2 size={13} />
                   </button>
                 </div>
-                <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.75, flex: 1 }}>
-                  {record.content || '暂无说明'}
+                <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.75, flex: 1, whiteSpace: 'pre-line' }}>
+                  {readableContent(record.content) || '暂无说明'}
                 </p>
                 <span className="badge" style={{ alignSelf: 'flex-start' }}>{categoryLabel(record.category)}</span>
               </article>

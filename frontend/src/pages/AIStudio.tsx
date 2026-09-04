@@ -231,7 +231,12 @@ function parseItems(result: AiResult): Array<{ title: string; content: string; p
     if (item && typeof item === 'object') {
       const record = item as Record<string, unknown>;
       const title = [record.name, record.title, record.chapter_title].find((value) => typeof value === 'string' && value.trim()) ?? `条目 ${index + 1}`;
-      const content = [record.description, record.chapter_goal, record.summary, record.content].find((value) => typeof value === 'string' && value.trim()) ?? JSON.stringify(record, null, 2);
+      const content =
+        [record.description, record.chapter_goal, record.summary, record.content].find((value) => typeof value === 'string' && value.trim()) ??
+        (Object.entries(record)
+          .filter(([key, value]) => !['name', 'title', 'chapter_title'].includes(key) && typeof value === 'string' && value.trim())
+          .map(([, value]) => String(value).trim())
+          .join('\n') || result.text.trim());
       return { title: String(title), content: String(content), payload: record };
     }
     return { title: `条目 ${index + 1}`, content: String(item ?? '') };

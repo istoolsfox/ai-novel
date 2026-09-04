@@ -29,14 +29,23 @@ function normalizeStructuredItem(item: unknown, index: number, result: AiResult)
   if (item && typeof item === 'object') {
     const record = item as Record<string, unknown>;
     const title = firstString(record, ['name', 'title', 'chapter_title', 'event_time', 'source_character']) || `条目 ${index + 1}`;
-    const description = firstString(record, ['description', 'summary', 'content', 'chapter_goal', 'cause', 'conflict']);
+    const description = firstString(record, ['description', 'summary', 'content', 'chapter_goal', 'cause', 'conflict']) || describeRecord(record);
     return {
       title: String(title),
-      content: description || JSON.stringify(record, null, 2),
+      content: description,
       payload: record,
     };
   }
   return { title: `条目 ${index + 1}`, content: String(item ?? result.text) };
+}
+
+/** 没有现成描述字段时，把其余字符串字段拼成可读文本，而不是把整个 JSON 塞进正文。 */
+function describeRecord(record: Record<string, unknown>): string {
+  const skip = new Set(['name', 'title', 'chapter_title', 'event_time', 'source_character']);
+  return Object.entries(record)
+    .filter(([key, value]) => !skip.has(key) && typeof value === 'string' && value.trim())
+    .map(([, value]) => String(value).trim())
+    .join('\n');
 }
 
 function firstString(record: Record<string, unknown>, keys: string[]): string {

@@ -357,6 +357,7 @@ export function NovelEditorPage({
             project={project}
             selectedChapter={selectedChapter}
             wordCount={wordCount}
+            dirty={draft !== (selectedChapter?.draft ?? '')}
             immersive={immersive}
             onToggleImmersive={onToggleImmersive}
             onTitleChange={onChapterTitleChange}
@@ -623,6 +624,7 @@ function EditorHeader({
   project,
   selectedChapter,
   wordCount,
+  dirty,
   immersive,
   onToggleImmersive,
   onTitleChange,
@@ -633,6 +635,7 @@ function EditorHeader({
   project: Project | null;
   selectedChapter: Chapter | null;
   wordCount: number;
+  dirty: boolean;
   immersive?: boolean;
   onToggleImmersive?: () => void;
   onTitleChange: (title: string) => void;
@@ -660,7 +663,12 @@ function EditorHeader({
             <span className="toolbar-tip">{immersive ? '退出沉浸' : '沉浸'}</span>
           </button>
         )}
-        <button className="toolbar-button primary-toolbar" onClick={onSave} disabled={!selectedChapter} title="保存正文 (Cmd+S)">
+        <button
+          className={dirty ? 'toolbar-button primary-toolbar' : 'toolbar-button'}
+          onClick={onSave}
+          disabled={!selectedChapter}
+          title={dirty ? '保存正文 (Cmd+S)' : '没有未保存的改动'}
+        >
           <Save size={15} />
           <span>保存</span>
         </button>

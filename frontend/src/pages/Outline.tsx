@@ -22,6 +22,9 @@ export function Outline() {
 
   const sorted = [...chapters].sort((left, right) => left.chapter_number - right.chapter_number);
   const totalWords = chapters.reduce((sum, chapter) => sum + (chapter.draft?.length ?? 0), 0);
+  const nextChapterNumber = chapters.reduce((max, chapter) => Math.max(max, chapter.chapter_number), 0) + 1;
+
+  const openCreateForm = () => setForm({ title: `第 ${nextChapterNumber} 章`, brief: '', summary: '' });
 
   const saveChapter = async () => {
     if (!form || !projectId || saving) return;
@@ -30,10 +33,9 @@ export function Outline() {
       if (form.id) {
         await api.updateChapter(projectId, form.id, { title: form.title, brief: form.brief, summary: form.summary });
       } else {
-        const nextNumber = chapters.reduce((max, chapter) => Math.max(max, chapter.chapter_number), 0) + 1;
         await api.createChapter(projectId, {
-          chapter_number: nextNumber,
-          title: form.title || `第 ${nextNumber} 章`,
+          chapter_number: nextChapterNumber,
+          title: form.title || `第 ${nextChapterNumber} 章`,
           brief: form.brief,
           summary: form.summary,
           draft: '',
@@ -53,7 +55,7 @@ export function Outline() {
         sub={project ? `${project.title} · ${chapters.length} 章 · 共 ${totalWords.toLocaleString()} 字` : '章节板：梗概、状态与入口'}
         actions={
           <>
-            <button className="btn" onClick={() => { setForm({ title: '', brief: '', summary: '' }); }}>
+            <button className="btn" onClick={openCreateForm}>
               <Plus size={14} /> 新建章节
             </button>
             <button className="btn btn-ai" onClick={() => setAiOpen(true)}>
@@ -69,7 +71,7 @@ export function Outline() {
           title="还没有章节"
           hint="手动创建章节，或让 AI 根据人物与世界观生成第一章大纲。"
           action={
-            <button className="btn" onClick={() => setForm({ title: '', brief: '', summary: '' })}>
+            <button className="btn" onClick={openCreateForm}>
               <Plus size={14} /> 新建章节
             </button>
           }
@@ -93,7 +95,13 @@ export function Outline() {
                   <Trash2 size={13} />
                 </button>
               </div>
-              <b style={{ fontFamily: 'var(--serif)', fontSize: 15.5 }}>{chapter.title || '未命名章'}</b>
+              <b
+                style={{ fontFamily: 'var(--serif)', fontSize: 15.5, cursor: 'pointer' }}
+                title="点击编辑本章梗概"
+                onClick={() => setForm({ id: chapter.id, title: chapter.title, brief: chapter.brief, summary: chapter.summary })}
+              >
+                {chapter.title || '未命名章'}
+              </b>
               <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.7, flex: 1, minHeight: 38 }}>
                 {chapter.brief || chapter.summary || '暂无梗概'}
               </p>
