@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .database import GENERIC_TABLES, connect, init_db, new_id, row_to_dict, rows_to_dicts, utc_now
 from .storage import ensure_project_dirs, project_root, require_project, safe_wiki_path
-from .novel_import import LAYER_LABELS, classify_fragment, has_chapter_structure, match_chapter, split_segments
+from .novel_import import LAYER_LABELS, classify_fragment, extract_summary, has_chapter_structure, match_chapter, split_segments
 
 
 @asynccontextmanager
@@ -601,15 +601,26 @@ def import_content(project_id: str, payload: ImportIn) -> dict[str, Any]:
                     """
                     INSERT INTO chapters (
                         id, project_id, outline_id, chapter_number, title, brief, draft,
-                        summary, word_count, status, created_at, updated_at
+                        summary, word_count, status, source, created_at, updated_at
                     )
-                    VALUES (?, ?, '', ?, ?, '', ?, '', ?, 'draft', ?, ?)
+                    VALUES (?, ?, '', ?, ?, '', ?, ?, ?, 'draft', 'import', ?, ?)
                     """,
-                    (chapter_id, project_id, start_number + offset, title, segment["content"], segment["words"], now, now),
+                    (
+                        chapter_id,
+                        project_id,
+                        start_number + offset,
+                        title,
+                        segment["content"],
+                        extract_summary(segment["content"]),
+                        segment["words"],
+                        now,
+                        now,
+                    ),
                 )
                 created.append(row_to_dict(conn.execute("SELECT * FROM chapters WHERE id = ?", (chapter_id,)).fetchone()))
         for chapter in created:
             write_chapter_snapshot(project_id, chapter)
+        create_import_directory_outline(project_id, created)
         return {
             "mode": "novel",
             "imported_chapters": len(created),
@@ -666,11 +677,21 @@ def import_content(project_id: str, payload: ImportIn) -> dict[str, Any]:
             """
             INSERT INTO chapters (
                 id, project_id, outline_id, chapter_number, title, brief, draft,
-                summary, word_count, status, created_at, updated_at
+                summary, word_count, status, source, created_at, updated_at
             )
-            VALUES (?, ?, '', ?, ?, '', ?, '', ?, 'draft', ?, ?)
+            VALUES (?, ?, '', ?, ?, '', ?, ?, ?, 'draft', 'import', ?, ?)
             """,
-            (chapter_id, project_id, next_number, title, content.strip(), len(content.strip()), now, now),
+            (
+                chapter_id,
+                project_id,
+                next_number,
+                title,
+                content.strip(),
+                extract_summary(content),
+                len(content.strip()),
+                now,
+                now,
+            ),
         )
         created = row_to_dict(conn.execute("SELECT * FROM chapters WHERE id = ?", (chapter_id,)).fetchone())
     write_chapter_snapshot(project_id, created)
@@ -780,9 +801,9 @@ def rebuild_volume_memory(project_id: str, volume_name: str = "第一卷") -> di
         chapters = rows_to_dicts(
             conn.execute(
                 """
-                SELECT id, chapter_number, title, brief, summary, draft, status
+                SELECT id, chapter_number, title, brief, summary, draft, status, source
                 FROM chapters
-                WHERE project_id = ? AND status = 'final'
+                WHERE project_id = ? AND (status = 'final' OR source = 'import')
                 ORDER BY chapter_number
                 """,
                 (project_id,),
@@ -791,7 +812,7 @@ def rebuild_volume_memory(project_id: str, volume_name: str = "第一卷") -> di
     lines = [
         "# 关键记忆",
         "",
-        "本文件只保存章节定稿后的关键事实、状态变化和反重复提示；正文全文保存在章节草稿与导出文件中。",
+        "本文件保存章节定稿后（含整本导入的章节）的关键事实、状态变化和反重复提示；正文全文保存在章节草稿与导出文件中。",
         "",
     ]
     for chapter in chapters:
@@ -858,6 +879,28 @@ def write_chapter_snapshot(project_id: str, chapter: dict[str, Any]) -> None:
     path = root / "manuscript" / f"chapter-{int(chapter['chapter_number']):03}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"# {chapter['title'] or '未命名章节'}\n\n{chapter['draft'] or ''}", encoding="utf-8")
+
+
+_IMPORT_DIRECTORY_MAX_CHARS = 9000
+
+
+def create_import_directory_outline(project_id: str, chapters: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """整本导入后生成一份章节目录大纲，让 AI 生成时能把握全书脉络（本地拼装，零 token）。"""
+    if not chapters:
+        return None
+    lines = ["# 导入章节目录", "", "整本导入时按章节顺序自动整理：每章一行标题与开头摘要，供生成时把握已有剧情走向。", ""]
+    for chapter in chapters:
+        title = clean_chapter_title(chapter)
+        summary = chapter_memory_summary(chapter)
+        lines.append(f"- 第 {chapter.get('chapter_number') or 0} 章 · {title}：{summary}")
+    content = trim_text("\n".join(lines), _IMPORT_DIRECTORY_MAX_CHARS)
+    with connect() as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM outlines WHERE project_id = ? AND title LIKE '导入章节目录%'",
+            (project_id,),
+        ).fetchone()[0]
+    title = "导入章节目录" if int(count) == 0 else f"导入章节目录（{int(count) + 1}）"
+    return create_generic(project_id, "outlines", GenericIn(title=title, content=content))
 
 
 def upsert_wiki_page(project_id: str, relative_path: str, content: str, source_chapter_id: str = "") -> dict[str, Any]:

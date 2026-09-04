@@ -88,6 +88,7 @@ def init_db() -> None:
                 summary TEXT DEFAULT '',
                 word_count INTEGER DEFAULT 0,
                 status TEXT DEFAULT 'draft',
+                source TEXT DEFAULT '',
                 selected_version_id TEXT DEFAULT '',
                 quality_score REAL DEFAULT 0,
                 created_at TEXT NOT NULL,
@@ -390,6 +391,10 @@ def init_db() -> None:
                 )
                 """
             )
+
+        chapter_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(chapters)").fetchall()}
+        if "source" not in chapter_columns:
+            conn.execute("ALTER TABLE chapters ADD COLUMN source TEXT DEFAULT ''")
 
     from .continuity_engine import install_continuity
 

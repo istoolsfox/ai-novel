@@ -49,6 +49,30 @@ def split_segments(content: str) -> list[dict[str, Any]]:
     return segments
 
 
+# 摘要取正文开头前两句，控制在 160 字内.
+_SUMMARY_SENTENCES = 2
+_SUMMARY_MAX_CHARS = 160
+
+
+def extract_summary(content: str, max_chars: int = _SUMMARY_MAX_CHARS) -> str:
+    """本地抽取式摘要：取正文开头前几句拼接，不调用大模型，导入零 token。"""
+    text = re.sub(r"\s+", "", content)
+    if not text:
+        return ""
+    sentences = [sentence for sentence in re.split(r"(?<=[。！？…；])", text) if sentence]
+    parts: list[str] = []
+    total = 0
+    for sentence in sentences:
+        parts.append(sentence)
+        total += len(sentence)
+        if len(parts) >= _SUMMARY_SENTENCES or total >= max_chars:
+            break
+    summary = "".join(parts)
+    if len(summary) > max_chars:
+        summary = summary[:max_chars].rstrip() + "……"
+    return summary
+
+
 def has_chapter_structure(content: str) -> bool:
     segments = split_segments(content)
     titled = [item for item in segments if item["title"] and looks_like_heading(item["title"])]

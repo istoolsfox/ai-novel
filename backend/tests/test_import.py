@@ -55,6 +55,40 @@ def test_import_novel_creates_chapters(monkeypatch, tmp_path):
     assert chapters[2]["word_count"] > 0
 
 
+def test_import_fills_summary_and_source(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project_id = create_project(client)
+    client.post(f"/api/projects/{project_id}/import", json={"content": NOVEL}).json()
+    chapters = client.get(f"/api/projects/{project_id}/chapters").json()
+    assert chapters[0]["source"] == "import"
+    assert chapters[0]["summary"].startswith("少年推开门")
+    assert "风雪灌了进来" in chapters[0]["summary"]
+
+
+def test_import_creates_directory_outline(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project_id = create_project(client)
+    client.post(f"/api/projects/{project_id}/import", json={"content": NOVEL}).json()
+    outlines = client.get(f"/api/projects/{project_id}/outlines").json()
+    directory = [record for record in outlines if record["title"] == "导入章节目录"]
+    assert len(directory) == 1
+    content = directory[0]["content"]
+    for title in ("第一章 风起", "第二章 旧友", "第三章 抉择"):
+        assert title in content
+
+
+def test_imported_chapters_enter_volume_memory(monkeypatch, tmp_path):
+    client = make_client(monkeypatch, tmp_path)
+    project_id = create_project(client)
+    client.post(f"/api/projects/{project_id}/import", json={"content": NOVEL}).json()
+    import backend.app.main as main
+
+    memory = main.rebuild_volume_memory(project_id)
+    assert "第一章 风起" in memory["content"]
+    assert "少年推开门" in memory["content"]
+    assert "不要重复" in memory["content"]
+
+
 def test_import_continues_existing_numbering(monkeypatch, tmp_path):
     client = make_client(monkeypatch, tmp_path)
     project_id = create_project(client)
@@ -129,6 +163,9 @@ def test_fragment_without_match_creates_new_chapter(monkeypatch, tmp_path):
     assert "created_chapter" in result
     chapters = client.get(f"/api/projects/{project_id}/chapters").json()
     assert len(chapters) == 2
+    created = next(c for c in chapters if c["chapter_number"] == 2)
+    assert created["source"] == "import"
+    assert created["summary"].startswith("深海的灯笼鱼")
 
 
 def test_import_rejects_empty(monkeypatch, tmp_path):
