@@ -947,6 +947,42 @@ def aggregate_markdown(project_id: str, resource: str, heading: str) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+def outline_level_of(record: dict[str, Any]) -> str:
+    """大纲三级分类：book / volume / chapter（含旧版 global_outline 兼容）。"""
+    payload = record_payload(record)
+    category = str(record.get("category") or payload.get("category") or "")
+    if category in {"book_outline", "global_outline"} or payload.get("scope") == "global":
+        return "book"
+    if category == "volume_outline" or payload.get("scope") == "volume":
+        return "volume"
+    return "chapter"
+
+
+def volume_range_of(record: dict[str, Any]) -> tuple[int, int]:
+    payload = record_payload(record)
+
+    def to_int(value: Any, fallback: int) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return fallback
+
+    start = to_int(payload.get("start_chapter"), 1)
+    end = to_int(payload.get("end_chapter"), start)
+    return (start, max(start, end))
+
+
+def outline_levels_from(records: list[Any]) -> dict[str, list[dict[str, Any]]]:
+    """把大纲记录整理成 全书 → 卷 → 章 三层，供生成正文时逐层注入上下文。"""
+    levels: dict[str, list[dict[str, Any]]] = {"book": [], "volume": [], "chapter": []}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        levels[outline_level_of(record)].append(record)
+    levels["volume"].sort(key=lambda item: volume_range_of(item)[0])
+    return levels
+
+
 def outline_record_key(record: dict[str, Any]) -> str:
     payload = record_payload(record)
     category = str(record.get("category") or payload.get("scope") or "")
@@ -976,16 +1012,17 @@ def aggregate_outline_markdown(project_id: str) -> str:
 
     def sort_key(record: dict[str, Any]) -> tuple[int, int, str]:
         payload = record_payload(record)
-        key = outline_record_key(record)
-        if key == "global":
-            return (0, 0, str(record.get("updated_at") or ""))
+        level = outline_level_of(record)
         try:
-            number = int(str(payload.get("chapter_number") or "999999"))
+            number = int(str(payload.get("chapter_number") or volume_range_of(record)[0] or "999999"))
         except ValueError:
             number = 999999
-        return (1, number, str(record.get("updated_at") or ""))
+        level_order = {"book": 0, "volume": 1, "chapter": 2}[level]
+        if level == "book":
+            return (0, 0, str(record.get("updated_at") or ""))
+        return (level_order, number, str(record.get("updated_at") or ""))
 
-    lines = ["# 总线大纲与章节大纲", ""]
+    lines = ["# 全书大纲、卷大纲与章节大纲", ""]
     for record in sorted(deduped.values(), key=sort_key):
         payload = record_payload(record)
         title = record.get("title") or payload.get("chapter_title") or "未命名大纲"
@@ -1177,6 +1214,7 @@ def compact_generation_context(context: dict[str, Any]) -> dict[str, Any]:
         "characters": [compact_record(record, 600) for record in (context.get("characters") or [])[:12] if isinstance(record, dict)],
         "relationships": [compact_record(record, 500) for record in (context.get("relationships") or [])[:16] if isinstance(record, dict)],
         "outlines": [compact_record(record, 900) for record in (context.get("outlines") or [])[:12] if isinstance(record, dict)],
+        "outline_levels": outline_levels_from(context.get("outlines") or []),
         "styles": [compact_record(record, 900) for record in (context.get("styles") or [])[:6] if isinstance(record, dict)],
         "timeline": [compact_record(record, 500) for record in (context.get("timeline") or [])[:16] if isinstance(record, dict)],
         "foreshadowings": [compact_record(record, 500) for record in (context.get("foreshadowings") or [])[:16] if isinstance(record, dict)],
@@ -1631,7 +1669,7 @@ def validate_workflow_prerequisites(workflow: str, context: dict[str, Any]) -> N
     if not context.get("characters"):
         missing.append("先生成并保存角色")
     if not context.get("outlines"):
-        missing.append("再生成并保存大纲")
+        missing.append("再生成并保存大纲（章节大纲或卷/全书大纲均可）")
     if missing:
         detail = "生成正文前需要按顺序准备素材：" + "，".join(missing) + "。"
         raise HTTPException(status_code=409, detail=detail)
@@ -1787,6 +1825,37 @@ def structured_output_for_workflow(workflow: str, payload: AiWorkflowIn, context
                 "description": "能在古籍馆里替持有人保留一小时真记忆的通行凭证。",
             },
         ]
+    if workflow == "generate_book_outline":
+        focus = payload.prompt or payload.content or str((context.get("chapter") or {}).get("title") or "本书")
+        protagonist = primary_character_name(context)
+        return {
+            "name": "全书大纲",
+            "category": "book_outline",
+            "premise": f"一句话故事：{focus}。",
+            "core_conflict": f"{protagonist}与造成一切根源的势力之间的根本对立，随剧情逐层揭开。",
+            "main_arc": "起（打破日常）→ 承（付出代价换取成长）→ 转（真相颠覆既有认知）→ 合（以核心代价换回想要的东西）。",
+            "ending_direction": "主线目标达成，但留下无法完全挽回的代价，形成余味。",
+        }
+    if workflow == "generate_volume_outline":
+        existing_volumes = [
+            record
+            for record in (context.get("outlines") or [])
+            if isinstance(record, dict) and str(record.get("category") or "") == "volume_outline"
+        ]
+        extras = payload.payload if isinstance(payload.payload, dict) else {}
+        volume_number = int(extras.get("volume_number") or payload.model_extra.get("volume_number") or (len(existing_volumes) + 1))
+        start_chapter = int(extras.get("start_chapter") or payload.model_extra.get("start_chapter") or 1)
+        focus = payload.prompt or "阶段性主线目标"
+        return {
+            "name": f"第 {volume_number} 卷大纲",
+            "category": "volume_outline",
+            "volume_number": volume_number,
+            "start_chapter": start_chapter,
+            "end_chapter": int(extras.get("end_chapter") or payload.model_extra.get("end_chapter") or start_chapter + 9),
+            "volume_goal": f"本卷围绕“{focus}”推进主线，卷末完成一次格局升级。",
+            "key_turns": "卷首抛出新威胁；中段主角以惨胜换取关键筹码；卷末揭开上一卷伏笔并抛出更大的钩子。",
+            "ending_state": "主角掌握下一段主线所需的关键信息/力量，但失去一项重要依仗。",
+        }
     if workflow == "extract_relationships":
         protagonist = primary_character_name(context)
         counterpart = next(
@@ -2028,6 +2097,8 @@ def build_stub_ai_output(
         "generate_setting": "小说设定",
         "generate_characters": "人物卡",
         "generate_outline": "总纲",
+        "generate_book_outline": "全书大纲",
+        "generate_volume_outline": "卷大纲",
         "generate_chapter_directory": "章节目录",
         "generate_chapter_brief": "本章大纲",
         "generate_chapter_draft": "章节正文",
@@ -2100,6 +2171,20 @@ def system_prompt_for_workflow(workflow: str) -> str:
             "你是中文长篇小说的情感深度编辑。只返回 JSON，不要包裹解释。"
             "你需要从正文、角色和 llmwiki 上下文中提取可执行的情感信息：核心情绪、被压抑的需求、对白潜台词、身体反应、意象锚点、追读债务和后续回收要求。"
             "不要输出泛泛建议；每个字段都必须能指导下一段正文如何写。"
+        )
+    if workflow == "generate_book_outline":
+        return (
+            "你是专业的中文长篇小说主编。当前任务是根据故事概念生成全书大纲，只返回 JSON，不要包裹解释。"
+            "返回字段：name（固定为“全书大纲”）、premise（一句话故事）、core_conflict（核心冲突）、"
+            "main_arc（主线走向，分起承转合）、ending_direction（结局方向）。"
+            "需要通读输入中的人物、世界观和已有大纲，让全书大纲统摄而非复述它们。"
+        )
+    if workflow == "generate_volume_outline":
+        return (
+            "你是专业的中文长篇小说主编。当前任务是生成一卷的卷大纲，只返回 JSON，不要包裹解释。"
+            "返回字段：name（如“第 2 卷大纲”）、volume_number、start_chapter、end_chapter、"
+            "volume_goal（本卷目标）、key_turns（关键转折）、ending_state（卷末状态）。"
+            "卷大纲要承接全书大纲的阶段目标，与已有卷大纲相互区分，卷末必须留下承接下一卷的钩子。"
         )
     if workflow in {"generate_outline", "generate_chapter_brief"}:
         return (
